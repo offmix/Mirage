@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+import { existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createServer } from "node:http";
@@ -6,9 +6,19 @@ import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { server as wisp } from "@mercuryworkshop/wisp-js/server";
 
-const require = createRequire(import.meta.url);
 const root = dirname(fileURLToPath(import.meta.url));
-const pkgDist = (name) => join(dirname(require.resolve(`${name}/package.json`)), "dist");
+// Locate package files directly in node_modules (avoids "exports" restrictions on package.json).
+function pkgDist(name) {
+  const base = join(root, "node_modules", name);
+  for (const sub of ["dist", "."]) {
+    const p = join(base, sub);
+    if (existsSync(join(base, sub)) && (sub === "." || readdirSync(p).length)) {
+      console.log(`[mirage] ${name} -> ${p}`);
+      return p;
+    }
+  }
+  throw new Error(`Package not found: ${name}. Did npm/yarn install succeed?`);
+}
 
 const fastify = Fastify({
   serverFactory: (handler) =>
