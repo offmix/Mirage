@@ -1,0 +1,18 @@
+{
+  "name": "mirage",
+  "version": "0.1.0",
+  "description": "Mirage - a Chrome-style web proxy built on Scramjet",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.0.0",
+    "@mercuryworkshop/bare-mux": "^2.1.7",
+    "@mercuryworkshop/epoxy-transport": "^2.1.0",
+    "@mercuryworkshop/scramjet": "latest",
+    "@mercuryworkshop/wisp-js": "latest",
+    "fastify": "^5.0.0"
+  },
+  "engines": { "node": ">=20" }
+}
