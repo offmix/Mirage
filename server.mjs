@@ -20,6 +20,14 @@ function pkgDist(name) {
   throw new Error(`Package not found: ${name}. Did npm/yarn install succeed?`);
 }
 
+const publicDir = join(root, "public");
+console.log(`[mirage] public dir: ${publicDir}`);
+console.log(`[mirage] public files: ${existsSync(publicDir) ? readdirSync(publicDir).join(", ") : "(missing)"}`);
+if (!existsSync(join(publicDir, "index.html"))) {
+  console.error("[mirage] public/index.html not found. Make sure the public/ folder (index.html, app.js, style.css, sw.js) is committed to the repo.");
+  process.exit(1);
+}
+
 const fastify = Fastify({
   serverFactory: (handler) =>
     createServer((req, res) => {
@@ -32,7 +40,7 @@ const fastify = Fastify({
     }),
 });
 
-fastify.register(fastifyStatic, { root: join(root, "public"), decorateReply: true });
+fastify.register(fastifyStatic, { root: publicDir, index: "index.html", decorateReply: true });
 fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/scramjet"), prefix: "/scram/", decorateReply: false });
 fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/bare-mux"), prefix: "/baremux/", decorateReply: false });
 fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/epoxy-transport"), prefix: "/epoxy/", decorateReply: false });
