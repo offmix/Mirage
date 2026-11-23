@@ -14,6 +14,19 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 
 const PREFIX = "/service/";
 
+// Scramjet 1.1 workaround: when the page's controller posts a "loadConfig" message,
+// the worker stores that config but never applies it, and loadConfig() returns early
+// (crash: "Cannot read properties of undefined (reading 'prefix')").
+// So on the first proxied request of each worker start, drop the message-provided
+// config and load/apply the one saved in IndexedDB.
+let configApplied = false;
+async function ensureConfig() {
+  if (configApplied) return;
+  scramjet.config = undefined;
+  await scramjet.loadConfig();
+  configApplied = true;
+}
+
 function errorPage(e) {
   const msg = "Mirage service worker error\n\n" + ((e && e.stack) || String(e));
   const html = "<!doctype html><meta charset=utf-8><title>Mirage error</title>" +
@@ -35,7 +48,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       try {
-        await scramjet.loadConfig();
+        await ensureConfig();
         if (scramjet.route(event)) return await scramjet.fetch(event);
         return await fetch(event.request);
       } catch (e) {
