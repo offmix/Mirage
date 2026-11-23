@@ -8,6 +8,10 @@ if (!loaded) throw new Error("No Scramjet worker bundle found under /scram/");
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
 const scramjet = new ScramjetServiceWorker();
 
+// Take over immediately so updated workers replace old ones without waiting.
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
 const PREFIX = "/service/";
 
 function errorPage(e) {
