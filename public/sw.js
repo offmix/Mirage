@@ -1,4 +1,10 @@
-importScripts("/scram/scramjet.all.js");
+// Load whichever Scramjet worker bundle this build ships.
+let loaded = false;
+for (const f of ["/scram/scramjet.all.js", "/scram/scramjet.worker.js"]) {
+  try { importScripts(f); loaded = true; break; } catch (e) { console.warn("[mirage] could not load", f); }
+}
+if (!loaded) throw new Error("No Scramjet worker bundle found under /scram/");
+
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
 const scramjet = new ScramjetServiceWorker();
 
