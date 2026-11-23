@@ -33,23 +33,45 @@ function svgIcon(id) {
   return `<svg><use href="#${id}"/></svg>`;
 }
 
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = resolve;
+    s.onerror = () => reject(new Error("Failed to load " + src));
+    document.head.appendChild(s);
+  });
+}
+
 async function init() {
-  if (!("serviceWorker" in navigator)) { alert("Service workers are not supported."); return; }
+  if (!("serviceWorker" in navigator)) throw new Error("Service workers are not supported.");
+
+  // Detect which Scramjet build files the server has.
+  const present = await (await fetch("/scram-files.json")).json();
+  const has = (n) => present.includes(n);
+  const bundle = ["scramjet.all.js", "scramjet.worker.js"].find(has);
+  if (!bundle) throw new Error("Scramjet bundle not found. Files: " + present.join(", "));
+  await loadScript("/scram/" + bundle);
+  if (typeof $scramjetLoadController !== "function") {
+    throw new Error("Unsupported Scramjet build ($scramjetLoadController missing). Files: " + present.join(", "));
+  }
+
+  const files = {};
+  for (const [key, name] of [["wasm", "scramjet.wasm.wasm"], ["all", "scramjet.all.js"], ["sync", "scramjet.sync.js"],
+                             ["worker", "scramjet.worker.js"], ["client", "scramjet.client.js"], ["shared", "scramjet.shared.js"]]) {
+    if (has(name)) files[key] = "/scram/" + name;
+  }
+  if (!files.wasm && has("scramjet.wasm.js")) files.wasm = "/scram/scramjet.wasm.js";
 
   const { ScramjetController } = $scramjetLoadController();
-  scramjet = new ScramjetController({
-    prefix: "/service/",
-    files: {
-      wasm: "/scram/scramjet.wasm.js",
-      all: "/scram/scramjet.all.js",
-      sync: "/scram/scramjet.sync.js",
-    },
-  });
-  await scramjet.init("/sw.js");
+  scramjet = new ScramjetController({ prefix: "/service/", files });
+
+  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  await navigator.serviceWorker.ready;
+  await scramjet.init();
 
   const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
   const wisp = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
-  await connection.setTransport("/epoxy/index.mjs", [{ wisp }]);
+  await connection.setTransport("/libcurl/index.mjs", [{ wisp }]);
 
   renderShortcuts();
   bindUI();
