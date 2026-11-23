@@ -43,7 +43,12 @@ const fastify = Fastify({
 fastify.register(fastifyStatic, { root: publicDir, index: "index.html", decorateReply: true });
 fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/scramjet"), prefix: "/scram/", decorateReply: false });
 fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/bare-mux"), prefix: "/baremux/", decorateReply: false });
-fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/epoxy-transport"), prefix: "/epoxy/", decorateReply: false });
+fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/libcurl-transport"), prefix: "/libcurl/", decorateReply: false });
+
+// Lets the client detect which Scramjet build files exist.
+const scramDir = pkgDist("@mercuryworkshop/scramjet");
+console.log(`[mirage] scramjet files: ${readdirSync(scramDir).join(", ")}`);
+fastify.get("/scram-files.json", async () => readdirSync(scramDir));
 
 const port = Number(process.env.PORT) || 8080;
 fastify.listen({ port, host: "0.0.0.0" }).then(() => console.log(`Mirage listening on :${port}`));
