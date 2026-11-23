@@ -129,7 +129,7 @@ function newTab(url) {
   const iframe = document.createElement("iframe");
   $("#frames").appendChild(iframe);
   const frame = scramjet.createFrame(iframe);
-  const tab = { id, iframe, frame, title: "New Tab", url: "", el: null };
+  const tab = { id, iframe, frame, title: "New Tab", url: "", el: null, favSrc: "" };
 
   const el = document.createElement("div");
   el.className = "tab";
@@ -178,6 +178,7 @@ function navigate(input) {
   if (!url || !t) return;
   t.url = url;
   setTitle(t, new URL(url).hostname);
+  setFavicon(t, "");
   $("#newtab-page").classList.add("hidden");
   $("#address").value = url;
   setStatus("Loading " + new URL(url).hostname + "...");
@@ -186,19 +187,55 @@ function navigate(input) {
   try { t.frame.go(url); } catch (e) { showError(e.message); }
 }
 
+function proxiedUrl(u) {
+  try { if (scramjet && typeof scramjet.encodeUrl === "function") return scramjet.encodeUrl(u); } catch {}
+  return "/service/" + encodeURIComponent(u);
+}
+
+// Find the page's favicon (through the proxy) or fall back to /favicon.ico.
+function findFavicon(tab) {
+  try {
+    const doc = tab.iframe.contentDocument;
+    const link = doc && doc.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i], link[rel="apple-touch-icon"]');
+    const raw = link && link.getAttribute("href");
+    if (raw) {
+      if (raw.startsWith("data:") || raw.includes("/service/")) return raw;
+      return proxiedUrl(new URL(raw, tab.url).toString());
+    }
+  } catch {}
+  try { return proxiedUrl(new URL("/favicon.ico", tab.url).toString()); } catch { return ""; }
+}
+
+function setFavicon(tab, src) {
+  if (tab.favSrc === src) return;
+  tab.favSrc = src;
+  const holder = tab.el.querySelector(".fav");
+  if (!src) { holder.innerHTML = svgIcon("i-globe"); return; }
+  const img = new Image();
+  img.alt = "";
+  img.onerror = () => { if (tab.favSrc === src) holder.innerHTML = svgIcon("i-globe"); };
+  img.src = src;
+  holder.replaceChildren(img);
+}
+
 function setTitle(t, title) {
   t.title = title;
   t.el.querySelector(".title").textContent = title;
 }
 
 function syncTab(tab) {
+  if (!tab.url) return;
   try {
     const doc = tab.iframe.contentDocument;
-    if (doc && doc.title) setTitle(tab, doc.title);
+    if (doc && doc.title && doc.title !== tab.title) setTitle(tab, doc.title);
     const real = tab.frame.url ? String(tab.frame.url) : null;
     if (real) { tab.url = real; if (tab.id === activeId) $("#address").value = real; }
   } catch {}
+  setFavicon(tab, findFavicon(tab));
 }
+
+// Titles and icons can change after load; keep tabs in sync.
+setInterval(() => tabs.forEach(syncTab), 1500);
 
 function bindUI() {
   $("#newtab").onclick = () => newTab();
