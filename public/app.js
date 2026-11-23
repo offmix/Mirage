@@ -1,55 +1,158 @@
-:root{
-  --frame:#dee1e6; --toolbar:#fff; --tab-active:#fff; --tab-hover:#e8eaed;
-  --text:#202124; --muted:#5f6368; --omni:#f1f3f4; --omni-focus:#fff; --accent:#1a73e8;
+"use strict";
+const $ = (s) => document.querySelector(s);
+const SEARCH = "https://duckduckgo.com/?q=%s";
+const SHORTCUTS = [
+  { name: "DuckDuckGo", url: "https://duckduckgo.com/" },
+  { name: "Wikipedia", url: "https://www.wikipedia.org/" },
+  { name: "GitHub", url: "https://github.com/" },
+  { name: "Reddit", url: "https://www.reddit.com/" },
+];
+
+let scramjet, tabs = [], activeId = null, nextId = 1;
+
+function showError(msg) {
+  console.error(msg);
+  const el = $("#status");
+  el.textContent = "Error: " + msg;
+  el.hidden = false;
 }
-@media (prefers-color-scheme: dark){
-  :root{--frame:#202124; --toolbar:#35363a; --tab-active:#35363a; --tab-hover:#2b2c2f;
-    --text:#e8eaed; --muted:#9aa0a6; --omni:#202124; --omni-focus:#202124; --accent:#8ab4f8;}
+window.addEventListener("error", (e) => showError(e.message));
+window.addEventListener("unhandledrejection", (e) => showError(String(e.reason && e.reason.message || e.reason)));
+
+function normalize(input) {
+  input = input.trim();
+  if (!input) return null;
+  try { return new URL(input).toString(); } catch {}
+  if (/^[^\s]+\.[^\s]{2,}$/.test(input) && !input.includes(" ")) {
+    try { return new URL("https://" + input).toString(); } catch {}
+  }
+  return SEARCH.replace("%s", encodeURIComponent(input));
 }
-*{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:"Segoe UI",Roboto,system-ui,sans-serif;font-size:13px;color:var(--text);background:var(--frame)}
-svg{width:20px;height:20px;fill:currentColor}
-button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
-#app{display:flex;flex-direction:column;height:100%}
 
-#tabstrip{display:flex;align-items:flex-end;padding:8px 8px 0;gap:4px;background:var(--frame);user-select:none}
-#tabs{display:flex;align-items:flex-end;min-width:0;flex:0 1 auto;gap:0}
-.tab{position:relative;display:flex;align-items:center;gap:8px;height:34px;min-width:60px;max-width:240px;width:240px;flex:0 1 240px;padding:0 8px 0 12px;border-radius:8px 8px 0 0;color:var(--muted);cursor:default}
-.tab:hover{background:var(--tab-hover)}
-.tab.active{background:var(--tab-active);color:var(--text)}
-.tab.active::before,.tab.active::after{content:"";position:absolute;bottom:0;width:8px;height:8px;background:transparent}
-.tab.active::before{left:-8px;border-bottom-right-radius:8px;box-shadow:4px 4px 0 4px var(--tab-active)}
-.tab.active::after{right:-8px;border-bottom-left-radius:8px;box-shadow:-4px 4px 0 4px var(--tab-active)}
-.tab .fav{width:16px;height:16px;flex:none}
-.tab .title{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.tab .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;flex:none}
-.tab .x svg{width:14px;height:14px}
-.tab .x:hover{background:rgba(128,128,128,.3)}
-.tab:not(:last-child):not(.active)::after{content:"";position:absolute;right:0;top:9px;height:16px;width:1px;background:var(--muted);opacity:.4}
+function svgIcon(id) {
+  return `<svg><use href="#${id}"/></svg>`;
+}
 
-.icon-btn{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:var(--muted);flex:none}
-.icon-btn:hover{background:rgba(128,128,128,.2)}
-.icon-btn.small{width:28px;height:28px;margin:0 0 3px 4px}
-.icon-btn:disabled{opacity:.4;cursor:default}
+async function init() {
+  if (!("serviceWorker" in navigator)) { alert("Service workers are not supported."); return; }
 
-#toolbar{display:flex;align-items:center;gap:4px;height:40px;padding:0 8px;background:var(--toolbar);box-shadow:0 1px 0 rgba(0,0,0,.15);z-index:2}
-#omnibox{flex:1;display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 12px;border-radius:15px;background:var(--omni);border:1px solid transparent}
-#omnibox:focus-within{background:var(--omni-focus);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.omni-icon{width:16px;height:16px;color:var(--muted);flex:none}
-#address,#ntp-input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:inherit;font:inherit;font-size:14px}
+  const { ScramjetController } = $scramjetLoadController();
+  scramjet = new ScramjetController({
+    prefix: "/service/",
+    files: {
+      wasm: "/scram/scramjet.wasm.js",
+      all: "/scram/scramjet.all.js",
+      sync: "/scram/scramjet.sync.js",
+    },
+  });
+  await scramjet.init("/sw.js");
 
-#content{position:relative;flex:1;background:#fff}
-#frames,#newtab-page{position:absolute;inset:0}
-#frames iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none}
-#frames iframe.active{display:block}
-#newtab-page{display:flex;flex-direction:column;align-items:center;padding-top:14vh;background:var(--toolbar);color:var(--text)}
-#newtab-page.hidden{display:none}
-.logo{width:72px;height:72px;color:var(--accent)}
-#newtab-page h1{font-weight:400;font-size:44px;margin:8px 0 24px;letter-spacing:.5px}
-#ntp-form{display:flex;align-items:center;gap:10px;width:min(560px,86vw);height:46px;padding:0 18px;border-radius:23px;background:var(--omni);border:1px solid rgba(128,128,128,.3)}
-#ntp-form:focus-within{box-shadow:0 1px 6px rgba(32,33,36,.28);background:var(--omni-focus)}
-#shortcuts{display:flex;gap:18px;margin-top:36px;flex-wrap:wrap;justify-content:center}
-.sc{width:92px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;border-radius:8px;color:var(--text)}
-.sc:hover{background:rgba(128,128,128,.15)}
-.sc .ic{width:48px;height:48px;border-radius:50%;background:var(--omni);display:grid;place-items:center;color:var(--muted)}
-#status{position:fixed;left:0;bottom:0;max-width:60%;padding:2px 10px;background:var(--toolbar);border:1px solid rgba(128,128,128,.3);border-left:0;border-bottom:0;border-radius:0 6px 0 0;font-size:12px}
+  const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
+  const wisp = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
+  await connection.setTransport("/epoxy/index.mjs", [{ wisp }]);
+
+  renderShortcuts();
+  bindUI();
+  newTab();
+}
+
+function renderShortcuts() {
+  const box = $("#shortcuts");
+  for (const s of SHORTCUTS) {
+    const a = document.createElement("button");
+    a.className = "sc";
+    a.innerHTML = `<span class="ic">${svgIcon("i-globe")}</span><span>${s.name}</span>`;
+    a.onclick = () => navigate(s.url);
+    box.appendChild(a);
+  }
+}
+
+function newTab(url) {
+  const id = nextId++;
+  const iframe = document.createElement("iframe");
+  $("#frames").appendChild(iframe);
+  const frame = scramjet.createFrame(iframe);
+  const tab = { id, iframe, frame, title: "New Tab", url: "", el: null };
+
+  const el = document.createElement("div");
+  el.className = "tab";
+  el.innerHTML = `<span class="fav">${svgIcon("i-globe")}</span><span class="title">New Tab</span><button class="x" aria-label="Close tab">${svgIcon("i-close")}</button>`;
+  el.onclick = () => activate(id);
+  el.querySelector(".x").onclick = (e) => { e.stopPropagation(); closeTab(id); };
+  $("#tabs").appendChild(el);
+  tab.el = el;
+  tabs.push(tab);
+
+  iframe.addEventListener("load", () => syncTab(tab));
+  activate(id);
+  if (url) navigate(url);
+  else $("#address").focus();
+}
+
+function current() { return tabs.find((t) => t.id === activeId); }
+
+function activate(id) {
+  activeId = id;
+  for (const t of tabs) {
+    t.el.classList.toggle("active", t.id === id);
+    t.iframe.classList.toggle("active", t.id === id);
+  }
+  const t = current();
+  $("#newtab-page").classList.toggle("hidden", !!t.url);
+  $("#address").value = t.url;
+}
+
+function closeTab(id) {
+  const i = tabs.findIndex((t) => t.id === id);
+  if (i < 0) return;
+  const [t] = tabs.splice(i, 1);
+  t.el.remove(); t.iframe.remove();
+  if (!tabs.length) return newTab();
+  if (activeId === id) activate(tabs[Math.max(0, i - 1)].id);
+}
+
+function navigate(input) {
+  const url = normalize(input);
+  const t = current();
+  if (!url || !t) return;
+  t.url = url;
+  setTitle(t, new URL(url).hostname);
+  $("#newtab-page").classList.add("hidden");
+  $("#address").value = url;
+  try { t.frame.go(url); } catch (e) { showError(e.message); }
+}
+
+function setTitle(t, title) {
+  t.title = title;
+  t.el.querySelector(".title").textContent = title;
+}
+
+function syncTab(tab) {
+  try {
+    const doc = tab.iframe.contentDocument;
+    if (doc && doc.title) setTitle(tab, doc.title);
+    const real = tab.frame.url ? String(tab.frame.url) : null;
+    if (real) { tab.url = real; if (tab.id === activeId) $("#address").value = real; }
+  } catch {}
+}
+
+function bindUI() {
+  $("#newtab").onclick = () => newTab();
+  $("#back").onclick = () => current()?.frame.back();
+  $("#forward").onclick = () => current()?.frame.forward();
+  $("#reload").onclick = () => current()?.frame.reload();
+  $("#home").onclick = () => { const t = current(); t.url = ""; activate(t.id); };
+  $("#address").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { navigate(e.target.value); e.target.blur(); }
+  });
+  $("#address").addEventListener("focus", (e) => e.target.select());
+  $("#ntp-form").addEventListener("submit", (e) => { e.preventDefault(); navigate($("#ntp-input").value); });
+  document.addEventListener("keydown", (e) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key === "t") { e.preventDefault(); newTab(); }
+    if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
+    if (mod && e.key === "l") { e.preventDefault(); $("#address").focus(); }
+  });
+}
+
+init().catch((e) => showError("Mirage failed to start: " + (e && e.message || e)));
