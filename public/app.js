@@ -177,4 +177,32 @@ function bindUI() {
   });
 }
 
-init().catch((e) => showError("Mirage failed to start: " + (e && e.message || e)));
+// An older Scramjet build may have left an IndexedDB with a different schema.
+// Clear it (and any old service workers) once, then reload.
+async function resetStaleState() {
+  try {
+    for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister();
+  } catch {}
+  const names = new Set(["$scramjet"]);
+  try {
+    for (const db of (await indexedDB.databases?.()) || []) {
+      if (db.name && /scramjet/i.test(db.name)) names.add(db.name);
+    }
+  } catch {}
+  await Promise.all([...names].map((n) => new Promise((res) => {
+    const r = indexedDB.deleteDatabase(n);
+    r.onsuccess = r.onerror = r.onblocked = () => res();
+  })));
+}
+
+init().catch(async (e) => {
+  const msg = (e && e.message) || String(e);
+  const stale = /object stores?|IDBDatabase|NotFoundError/i.test(msg);
+  if (stale && !sessionStorage.getItem("mirage-reset")) {
+    sessionStorage.setItem("mirage-reset", "1");
+    await resetStaleState();
+    location.reload();
+    return;
+  }
+  showError("Mirage failed to start: " + msg);
+});
