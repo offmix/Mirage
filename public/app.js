@@ -1,6 +1,6 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
-const SEARCH = "https://duckduckgo.com/?q=%s";
+const SEARCH = "https://www.google.com/search?q=%s";
 const SHORTCUTS = [
   { name: "DuckDuckGo", url: "https://duckduckgo.com/" },
   { name: "Wikipedia", url: "https://www.wikipedia.org/" },
@@ -9,6 +9,32 @@ const SHORTCUTS = [
 ];
 
 let scramjet, tabs = [], activeId = null, nextId = 1;
+
+function setStatus(msg, isError) {
+  const el = $("#status");
+  if (!msg) { el.hidden = true; return; }
+  el.textContent = msg;
+  el.style.color = isError ? "#d93025" : "";
+  el.hidden = false;
+}
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(label + " timed out (" + ms / 1000 + "s)")), ms)),
+  ]);
+}
+function testWisp(url) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+    try {
+      const ws = new WebSocket(url);
+      ws.onopen = () => { ws.close(); finish(true); };
+      ws.onerror = () => finish(false);
+      setTimeout(() => finish(false), 8000);
+    } catch { finish(false); }
+  });
+}
 
 function showError(msg) {
   console.error(msg);
@@ -65,13 +91,22 @@ async function init() {
   const { ScramjetController } = $scramjetLoadController();
   scramjet = new ScramjetController({ prefix: "/service/", files });
 
-  await scramjet.init();
-  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  await navigator.serviceWorker.ready;
+  setStatus("Starting: initializing Scramjet...");
+  await withTimeout(scramjet.init(), 10000, "scramjet.init");
+  setStatus("Starting: registering service worker...");
+  await withTimeout(navigator.serviceWorker.register("/sw.js", { scope: "/" }), 10000, "service worker register");
+  await withTimeout(navigator.serviceWorker.ready, 10000, "service worker activation");
 
   const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
   const wisp = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
-  await connection.setTransport("/libcurl/index.mjs", [{ wisp }]);
+  setStatus("Starting: connecting transport...");
+  await withTimeout(connection.setTransport("/libcurl/index.mjs", [{ wisp }]), 15000, "transport setup");
+  setStatus("Starting: checking Wisp connection...");
+  if (!(await testWisp(wisp))) {
+    setStatus("Warning: cannot open Wisp WebSocket (" + wisp + "). Sites will not load.", true);
+  } else {
+    setStatus("");
+  }
 
   renderShortcuts();
   bindUI();
@@ -105,7 +140,11 @@ function newTab(url) {
   tab.el = el;
   tabs.push(tab);
 
-  iframe.addEventListener("load", () => syncTab(tab));
+  iframe.addEventListener("load", () => {
+    clearTimeout(tab.loadTimer);
+    if (tab.id === activeId) setStatus("");
+    syncTab(tab);
+  });
   activate(id);
   if (url) navigate(url);
   else $("#address").focus();
@@ -141,6 +180,9 @@ function navigate(input) {
   setTitle(t, new URL(url).hostname);
   $("#newtab-page").classList.add("hidden");
   $("#address").value = url;
+  setStatus("Loading " + new URL(url).hostname + "...");
+  clearTimeout(t.loadTimer);
+  t.loadTimer = setTimeout(() => setStatus("Still loading. The transport or Wisp connection may be stuck (open the browser console for details).", true), 20000);
   try { t.frame.go(url); } catch (e) { showError(e.message); }
 }
 
