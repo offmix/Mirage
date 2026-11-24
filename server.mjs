@@ -45,6 +45,18 @@ fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/scramjet"), pr
 fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/bare-mux"), prefix: "/baremux/", decorateReply: false });
 fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/libcurl-transport"), prefix: "/libcurl/", decorateReply: false });
 
+// Supabase client library (self-hosted so the COEP header does not block a CDN script).
+fastify.register(fastifyStatic, { root: join(pkgDist("@supabase/supabase-js"), "umd"), prefix: "/supabase/", decorateReply: false });
+
+// Public Supabase settings, taken from environment variables (the anon key is safe to expose; RLS protects data).
+fastify.get("/config.js", async (req, reply) => {
+  reply.header("content-type", "application/javascript; charset=utf-8").header("cache-control", "no-store");
+  return "window.MIRAGE_CONFIG=" + JSON.stringify({
+    supabaseUrl: process.env.SUPABASE_URL || "",
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
+  }) + ";";
+});
+
 // Lets the client detect which Scramjet build files exist.
 const scramDir = pkgDist("@mercuryworkshop/scramjet");
 console.log(`[mirage] scramjet files: ${readdirSync(scramDir).join(", ")}`);
