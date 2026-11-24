@@ -49,12 +49,48 @@ fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/libcurl-transp
 fastify.register(fastifyStatic, { root: join(pkgDist("@supabase/supabase-js"), "umd"), prefix: "/supabase/", decorateReply: false });
 
 // Public Supabase settings, taken from environment variables (the anon key is safe to expose; RLS protects data).
+// Browser-side key: new "publishable" key, or the legacy anon key (both are safe to expose; RLS protects data).
+function publicKey() {
+  if (process.env.SUPABASE_PUBLISHABLE_KEY) return process.env.SUPABASE_PUBLISHABLE_KEY;
+  try {
+    const keys = JSON.parse(process.env.SUPABASE_PUBLISHABLE_KEYS || "{}");
+    if (keys.default) return keys.default;
+    const first = Object.values(keys)[0];
+    if (first) return first;
+  } catch {}
+  return process.env.SUPABASE_ANON_KEY || "";
+}
+
 fastify.get("/config.js", async (req, reply) => {
   reply.header("content-type", "application/javascript; charset=utf-8").header("cache-control", "no-store");
   return "window.MIRAGE_CONFIG=" + JSON.stringify({
     supabaseUrl: process.env.SUPABASE_URL || "",
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
+    supabaseAnonKey: publicKey(),
   }) + ";";
+});
+
+// Server-side user verification with @supabase/server.
+// GET /api/me with "Authorization: Bearer <access token>" returns the verified user's profile.
+// Reads SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY(S), SUPABASE_SECRET_KEY(S) and SUPABASE_JWKS from the environment.
+let meHandler = null;
+try {
+  const { withSupabase } = await import("@supabase/server");
+  meHandler = withSupabase({ auth: "user", cors: false }, async (req, ctx) => {
+    const sub = ctx.userClaims && ctx.userClaims.sub;
+    const { data } = await ctx.supabase.from("profiles").select("id,username,avatar_url").eq("id", sub).maybeSingle();
+    return Response.json({ id: sub, profile: data });
+  });
+} catch (e) {
+  console.warn("[mirage] @supabase/server unavailable, /api/me disabled:", e.message);
+}
+
+fastify.get("/api/me", async (req, reply) => {
+  if (!meHandler) return reply.code(503).send({ error: "server verification is not available" });
+  const webReq = new Request(`http://${req.headers.host || "localhost"}${req.url}`, { headers: req.headers });
+  const res = await meHandler(webReq);
+  reply.code(res.status);
+  res.headers.forEach((v, k) => reply.header(k, v));
+  return reply.send(Buffer.from(await res.arrayBuffer()));
 });
 
 // Lets the client detect which Scramjet build files exist.
