@@ -43,7 +43,7 @@ function onShortcut(e) {
   if (mod && e.key === "t") { e.preventDefault(); newTab(); }
   else if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
   else if (mod && e.key === "l") { e.preventDefault(); $("#address").focus(); }
-  else if (e.altKey && e.code === "KeyP") { e.preventDefault(); e.stopPropagation(); MirageUI.toggleFilter(); }
+  else if (e.altKey && e.code === "KeyZ") { e.preventDefault(); e.stopPropagation(); MirageUI.toggleFilter(); }
 }
 
 const keyDocs = new WeakSet();
