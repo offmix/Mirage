@@ -39,6 +39,13 @@ function toRealUrl(u) {
 // because key events in an iframe do not reach the parent document.
 function onShortcut(e) {
   if (document.body.classList.contains("tab-locked")) return;
+  if (e.key === "Escape" && document.body.classList.contains("site-fullscreen") && !document.fullscreenElement) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.classList.remove("site-fullscreen");
+    updateFullscreenButtons();
+    return;
+  }
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key === "t") { e.preventDefault(); newTab(); }
   else if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
@@ -233,6 +240,7 @@ function activate(id) {
   $("#newtab-page").classList.toggle("hidden", !!t.url);
   if (!addrDirty) $("#address").value = t.url;
   updateStar();
+  updateFullscreenButtons();
 }
 
 function closeTab(id) {
@@ -254,6 +262,7 @@ function navigate(input) {
   $("#newtab-page").classList.add("hidden");
   $("#address").value = url;
   updateStar();
+  updateFullscreenButtons();
   setStatus("Loading " + new URL(url).hostname + "...");
   clearTimeout(t.loadTimer);
   t.loadTimer = setTimeout(() => setStatus("Still loading. The transport or Wisp connection may be stuck (open the browser console for details).", true), 20000);
@@ -317,12 +326,56 @@ function syncTab(tab) {
 // Titles and icons can change after load; keep tabs in sync.
 setInterval(() => tabs.forEach(syncTab), 1500);
 
+function updateFullscreenButtons() {
+  const active = document.body.classList.contains("site-fullscreen");
+  const label = active ? "全画面を終了" : "サイトを全画面表示";
+  for (const button of [$("#btn-fullscreen"), $("#fullscreen-exit")]) {
+    if (!button) continue;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    const icon = button.querySelector("use");
+    if (icon) icon.setAttribute("href", active ? "#i-exit-fullscreen" : "#i-fullscreen");
+  }
+  const toggle = $("#btn-fullscreen");
+  if (toggle) {
+    toggle.disabled = !active && !(current() && current().url);
+    toggle.setAttribute("aria-pressed", String(active));
+  }
+}
+
+function onFullscreenChange() {
+  if (!document.fullscreenElement && document.body.classList.contains("site-fullscreen")) {
+    document.body.classList.remove("site-fullscreen");
+  }
+  updateFullscreenButtons();
+}
+
+async function toggleSiteFullscreen() {
+  const active = document.body.classList.contains("site-fullscreen");
+  if (active) {
+    document.body.classList.remove("site-fullscreen");
+    try { if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen(); } catch {}
+  } else {
+    const tab = current();
+    if (!tab || !tab.url) return;
+    document.body.classList.add("site-fullscreen");
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch { /* Keep the in-page fullscreen layout if browser fullscreen is unavailable. */ }
+  }
+  updateFullscreenButtons();
+}
 function bindUI() {
   $("#newtab").onclick = () => newTab();
   $("#back").onclick = () => current()?.frame.back();
   $("#forward").onclick = () => current()?.frame.forward();
   $("#reload").onclick = () => current()?.frame.reload();
   $("#home").onclick = () => { const t = current(); t.url = ""; activate(t.id); };
+  $("#btn-fullscreen").addEventListener("click", toggleSiteFullscreen);
+  $("#fullscreen-exit").addEventListener("click", toggleSiteFullscreen);
+  document.addEventListener("fullscreenchange", onFullscreenChange);
   const addr = $("#address");
   addr.addEventListener("input", () => { addrDirty = true; });
   addr.addEventListener("keydown", (e) => {

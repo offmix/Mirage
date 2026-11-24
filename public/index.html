@@ -18,6 +18,8 @@ document.documentElement.dataset.theme=t;document.documentElement.dataset.accent
     <symbol id="i-forward" viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" fill="currentColor"/></symbol>
     <symbol id="i-reload" viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0012 4a8 8 0 108 8h-2a6 6 0 11-1.76-4.24L13 11h7V4z" fill="currentColor"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="currentColor"/></symbol>
+    <symbol id="i-fullscreen" viewBox="0 0 24 24"><path d="M5 5h6v2H7v4H5V5zm8 0h6v6h-2V7h-4V5zM5 13h2v4h4v2H5v-6zm12 4v-4h2v6h-6v-2h4z" fill="currentColor"/></symbol>
+    <symbol id="i-exit-fullscreen" viewBox="0 0 24 24"><path d="M7 7v4H5V5h6v2H7zm10 0h-4V5h6v6h-2V7zM7 17h4v2H5v-6h2v4zm10 0v-4h2v6h-6v-2h4z" fill="currentColor"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="currentColor"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" fill="currentColor"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><path d="M18 8h-1V6a5 5 0 00-10 0v2H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V10a2 2 0 00-2-2zM9 6a3 3 0 016 0v2H9z" fill="currentColor"/></symbol>
@@ -54,6 +56,7 @@ document.documentElement.dataset.theme=t;document.documentElement.dataset.accent
     <button id="btn-sidebar" class="icon-btn" title="ブックマークと履歴" aria-label="ブックマークと履歴"><svg><use href="#i-bookmark"/></svg></button>
     <button id="btn-settings" class="icon-btn" title="設定" aria-label="設定"><svg><use href="#i-settings"/></svg></button>
     <button id="btn-account" class="icon-btn avatar-btn" title="アカウント" aria-label="アカウント"><span id="avatar-slot"><svg><use href="#i-person"/></svg></span></button>
+    <button id="btn-fullscreen" class="icon-btn" type="button" title="サイトを全画面表示" aria-label="サイトを全画面表示" aria-pressed="false" disabled><svg><use href="#i-fullscreen"/></svg></button>
   </div>
   <div id="main">
   <div id="content">
@@ -66,6 +69,7 @@ document.documentElement.dataset.theme=t;document.documentElement.dataset.accent
       <div id="shortcuts"></div>
     </div>
     <div id="frames"></div>
+    <button id="fullscreen-exit" type="button" title="全画面を終了" aria-label="全画面を終了"><svg><use href="#i-exit-fullscreen"/></svg></button>
     <div id="privacy-filter" hidden></div>
   </div>
   <aside id="sidebar" hidden></aside>
