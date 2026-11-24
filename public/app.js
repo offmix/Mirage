@@ -1,454 +1,534 @@
 "use strict";
-const $ = (s) => document.querySelector(s);
+// UI: theme, page filter, sidebar (bookmarks/history), settings and account dialogs.
+const MirageUI = (() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const ic = (id) => `<svg><use href="#${id}"/></svg>`;
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const S = () => MirageData.state;
 
-// Fallbacks so browsing still works if data.js / ui.js failed to load (for example, not pushed to the repo).
-const missingModules = [];
-if (typeof MirageData === "undefined") {
-  missingModules.push("data.js");
-  globalThis.MirageData = {
-    enabled: false, state: { user: null, profile: null, settings: {}, bookmarks: [], history: [] },
-    on() {}, init: () => Promise.resolve(), isBookmarked: () => false, findBookmark: () => null,
-    addBookmark: async () => {}, removeBookmark: async () => {}, addHistory: async () => {},
-  };
-}
-if (typeof MirageUI === "undefined") {
-  missingModules.push("ui.js");
-  globalThis.MirageUI = { init() {}, toggleFilter() {} };
-}
-const SEARCH = "https://www.google.com/search?q=%s";
-const SHORTCUTS = [
-  { name: "DuckDuckGo", url: "https://duckduckgo.com/" },
-  { name: "Wikipedia", url: "https://www.wikipedia.org/" },
-  { name: "GitHub", url: "https://github.com/" },
-  { name: "Reddit", url: "https://www.reddit.com/" },
-];
+  const THEMES = [
+    { id: "system", name: "システム", bg: "linear-gradient(135deg,#fff 50%,#202124 50%)" },
+    { id: "light", name: "ライト", bg: "#ffffff" },
+    { id: "dark", name: "ダーク", bg: "#35363a" },
+    { id: "midnight", name: "ミッドナイト", bg: "#141b34" },
+    { id: "forest", name: "フォレスト", bg: "#24382d" },
+    { id: "sakura", name: "サクラ", bg: "#fff7fa" },
+  ];
+  const ACCENTS = { blue: "#4285f4", purple: "#8b5cf6", green: "#1e9e5a", red: "#e5484d", orange: "#f08c00", pink: "#e5467f" };
+  const FILTERS = [
+    { id: "off", name: "オフ" }, { id: "dim", name: "暗くする" }, { id: "fog", name: "霧" },
+    { id: "mono", name: "低コントラスト" }, { id: "hlines", name: "横線" },
+    { id: "vlines", name: "縦線(ブラインド)" }, { id: "mesh", name: "格子" },
+    { id: "dots", name: "ドット" }, { id: "diag", name: "斜線" }, { id: "noise", name: "ノイズ" },
+  ];
 
-let scramjet, tabs = [], activeId = null, nextId = 1;
-let addrDirty = false;   // true while the user is editing the address bar
+  // ---------- tab title and icon (Mirage itself, not the proxied site) ----------
+  const DEFAULT_TITLE = "Mirage";
+  const DEFAULT_ICON = "data:image/svg+xml," + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><circle cx='24' cy='24' r='20' fill='none' stroke='#8b5cf6' stroke-width='4'/><path d='M8 28q8-8 16 0t16 0' fill='none' stroke='#8b5cf6' stroke-width='4' stroke-linecap='round'/></svg>"
+  );
+  const TAB_TEMPLATES = [
+    { id: "classroom", name: "Classroom", title: "ホーム - Classroom", icon: "https://icon-class-1.edgeone.dev/file.png" },
+    { id: "default", name: "デフォルト", title: "", icon: "" },
+  ];
+  const validIconUrl = (u) => /^https?:\/\//i.test(u) || /^data:image\//i.test(u);
 
-// If a proxied (encoded) URL ever leaks through, turn it back into the real URL.
-function toRealUrl(u) {
-  const s = String(u);
-  const prefix = "/service/";
-  if (s.startsWith(prefix)) { try { return decodeURIComponent(s.slice(prefix.length)); } catch {} }
-  if (s.startsWith(location.origin + prefix)) { try { return decodeURIComponent(s.slice(location.origin.length + prefix.length)); } catch {} }
-  return s;
-}
-
-// Keyboard shortcuts. Used on the Mirage page and also inside every proxied page,
-// because key events in an iframe do not reach the parent document.
-function onShortcut(e) {
-  if (document.body.classList.contains("tab-locked")) return;
-  if (e.key === "Escape" && document.body.classList.contains("site-fullscreen") && !document.fullscreenElement) {
-    e.preventDefault();
-    e.stopPropagation();
-    document.body.classList.remove("site-fullscreen");
-    updateFullscreenButtons();
-    return;
+  function applyTab() {
+    const t = S().settings.tab || {};
+    document.title = t.title || DEFAULT_TITLE;
+    const href = t.icon || DEFAULT_ICON;
+    const old = document.getElementById("mirage-icon");
+    if (old && old.getAttribute("href") === href) return;
+    if (old) old.remove();
+    const link = document.createElement("link"); // re-created so the browser reloads the icon
+    link.id = "mirage-icon"; link.rel = "icon"; link.href = href;
+    document.head.appendChild(link);
   }
-  const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key === "t") { e.preventDefault(); newTab(); }
-  else if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
-  else if (mod && e.key === "l") { e.preventDefault(); $("#address").focus(); }
-  else if (e.altKey && e.code === "KeyZ") { e.preventDefault(); e.stopPropagation(); MirageUI.toggleFilter(); }
-}
 
-const keyDocs = new WeakSet();
-const nativeAddListener = EventTarget.prototype.addEventListener; // parent realm's own function (not Scramjet's patched one)
-function attachKeys(tab) {
-  try {
-    const doc = tab.iframe.contentDocument;
-    if (!doc || keyDocs.has(doc)) return;
-    nativeAddListener.call(doc, "keydown", onShortcut, true);
-    keyDocs.add(doc);
-  } catch {}
-}
+  // ---------- theme ----------
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  function applyTheme() {
+    const s = S().settings;
+    document.documentElement.dataset.theme = s.theme === "system" ? (mq.matches ? "dark" : "light") : s.theme;
+    document.documentElement.dataset.accent = s.accent;
+  }
+  mq.addEventListener("change", () => { if (S().settings.theme === "system") applyTheme(); });
 
-function updateStar() {
-  const t = current();
-  const on = !!(t && t.url && MirageData.isBookmarked(t.url));
-  const b = $("#star");
-  b.classList.toggle("on", on);
-  b.querySelector("use").setAttribute("href", on ? "#i-star-fill" : "#i-star");
-  b.title = on ? "ブックマークを削除" : "このページをブックマーク";
-}
+  // ---------- page filter ----------
+  const NOISE = "url(\"data:image/svg+xml," + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.6 -0.2'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>"
+  ) + "\")";
 
-function recordHistory(tab) {
-  if (!tab.url || !/^https?:/i.test(tab.url) || tab.lastLogged === tab.url) return;
-  tab.lastLogged = tab.url;
-  MirageData.addHistory({ title: tab.title || tab.url, url: tab.url });
-}
+  function filterStyle(type, strength) {
+    const s = Math.min(100, Math.max(10, Number(strength) || 60)) / 100;
+    const f = (n) => n.toFixed(2);
+    switch (type) {
+      case "dim":
+        return { backgroundColor: `rgba(0,0,0,${f(0.2 + 0.5 * s)})`, backdropFilter: `brightness(${f(1 - 0.4 * s)}) contrast(${f(1 - 0.3 * s)})` };
+      case "fog":
+        return { backgroundColor: `rgba(150,150,150,${f(0.15 + 0.35 * s)})`, backdropFilter: `blur(${(1 + 4 * s).toFixed(1)}px) contrast(${f(1 - 0.4 * s)})` };
+      case "mono":
+        return { backdropFilter: `grayscale(1) contrast(${f(1 - 0.55 * s)}) brightness(${f(1 - 0.35 * s)})` };
+      case "hlines": {
+        const w = (1 + 2 * s).toFixed(1);
+        return { backgroundImage: `repeating-linear-gradient(0deg, rgba(0,0,0,${f(0.5 + 0.4 * s)}) 0 ${w}px, transparent ${w}px 4px)`, backdropFilter: `brightness(${f(1 - 0.15 * s)})` };
+      }
+      case "vlines": {
+        const w = (2 + 3 * s).toFixed(1);
+        return { backgroundImage: `repeating-linear-gradient(90deg, rgba(0,0,0,${f(0.5 + 0.4 * s)}) 0 ${w}px, transparent ${w}px 7px)` };
+      }
+      case "mesh": {
+        const w = (1 + 1.5 * s).toFixed(1), c = `rgba(0,0,0,${f(0.5 + 0.4 * s)})`;
+        return { backgroundImage: `repeating-linear-gradient(0deg, ${c} 0 ${w}px, transparent ${w}px 4px), repeating-linear-gradient(90deg, ${c} 0 ${w}px, transparent ${w}px 4px)` };
+      }
+      case "dots": {
+        const r = 0.8 + 1.2 * s;
+        return { backgroundImage: `radial-gradient(circle at center, rgba(0,0,0,${f(0.6 + 0.35 * s)}) ${r.toFixed(1)}px, transparent ${(r + 0.6).toFixed(1)}px)`, backgroundSize: "4px 4px" };
+      }
+      case "diag": {
+        const w = (1 + 2 * s).toFixed(1);
+        return { backgroundImage: `repeating-linear-gradient(45deg, rgba(0,0,0,${f(0.5 + 0.4 * s)}) 0 ${w}px, transparent ${w}px 5px)` };
+      }
+      case "noise":
+        return { backgroundImage: NOISE, backgroundSize: "160px 160px", opacity: f(0.3 + 0.7 * s), backdropFilter: `brightness(${f(1 - 0.2 * s)})` };
+      default:
+        return null;
+    }
+  }
+  function paint(el, st) {
+    el.style.cssText = "";
+    if (!st) return;
+    Object.assign(el.style, st);
+    if (st.backdropFilter) el.style.webkitBackdropFilter = st.backdropFilter;
+  }
+  function applyFilter() {
+    const el = $("#privacy-filter"), f = S().settings.filter;
+    const st = f.type === "off" ? null : filterStyle(f.type, f.strength);
+    if (!st) { el.hidden = true; return; }
+    paint(el, st);
+    el.hidden = false;
+  }
+  let lastFilter = "dim";
+  function toggleFilter() {
+    const f = S().settings.filter;
+    if (f.type !== "off") { lastFilter = f.type; MirageData.setSettings({ filter: { type: "off" } }); }
+    else MirageData.setSettings({ filter: { type: lastFilter } });
+  }
 
-function setStatus(msg, isError) {
-  const el = $("#status");
-  if (!msg) {
-    if (missingModules.length) {
-      el.textContent = "Missing files: public/" + missingModules.join(", public/") + " (add them to the repo and redeploy)";
-      el.style.color = "#d93025"; el.hidden = false;
+  // ---------- sidebar ----------
+  let panel = "bookmarks", query = "";
+  const sb = () => $("#sidebar");
+
+  function buildSidebar() {
+    sb().innerHTML = `
+      <div class="sb-head">
+        <div class="sb-tabs">
+          <button data-panel="bookmarks">ブックマーク</button>
+          <button data-panel="history">履歴</button>
+        </div>
+        <button class="icon-btn small" data-sb-close title="閉じる" aria-label="閉じる">${ic("i-close")}</button>
+      </div>
+      <div class="sb-tools">
+        <div class="sb-search">${ic("i-search")}<input id="sb-q" type="text" placeholder="検索" autocomplete="off"></div>
+        <button class="btn" id="sb-action"></button>
+      </div>
+      <div class="sb-list" id="sb-list"></div>`;
+
+    sb().addEventListener("click", async (e) => {
+      const t = e.target.closest("[data-panel]");
+      if (t) { panel = t.dataset.panel; query = ""; $("#sb-q").value = ""; renderSidebar(); if (panel === "history") MirageData.loadHistory(); return; }
+      if (e.target.closest("[data-sb-close]")) { closeSidebar(); return; }
+      if (e.target.closest("#sb-signin")) { openAccount(); return; }
+      if (e.target.closest("#sb-action")) { await sidebarAction(); return; }
+      const del = e.target.closest("[data-del]");
+      const item = e.target.closest(".item");
+      if (del && item) {
+        e.stopPropagation();
+        try { panel === "bookmarks" ? await MirageData.removeBookmark(item.dataset.id) : await MirageData.deleteHistory(item.dataset.id); }
+        catch (err) { alert(err.message); }
+        return;
+      }
+      if (item) openItem(item.dataset.url, e.ctrlKey || e.metaKey);
+    });
+    sb().addEventListener("auxclick", (e) => {
+      const item = e.target.closest(".item");
+      if (item && e.button === 1) { e.preventDefault(); openItem(item.dataset.url, true); }
+    });
+    sb().addEventListener("keydown", (e) => {
+      const item = e.target.closest(".item");
+      if (item && e.key === "Enter") openItem(item.dataset.url, e.ctrlKey || e.metaKey);
+    });
+    $("#sb-q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); renderList(); });
+  }
+
+  function openItem(url, newTab) {
+    if (newTab) window.MirageApp.newTab(url); else window.MirageApp.navigate(url);
+  }
+
+  async function sidebarAction() {
+    try {
+      if (panel === "bookmarks") {
+        const t = window.MirageApp.current();
+        if (t && t.url) await MirageData.addBookmark({ title: t.title, url: t.url });
+      } else if (S().user && confirm("閲覧履歴をすべて削除しますか?")) {
+        await MirageData.clearHistory();
+      }
+    } catch (err) { alert(err.message); }
+  }
+
+  function openSidebar(p) {
+    if (p) panel = p;
+    sb().hidden = false;
+    $("#btn-sidebar").classList.add("on");
+    renderSidebar();
+    if (panel === "history") MirageData.loadHistory();
+  }
+  function closeSidebar() { sb().hidden = true; $("#btn-sidebar").classList.remove("on"); }
+  function toggleSidebar() { sb().hidden ? openSidebar() : closeSidebar(); }
+
+  function shortUrl(u) {
+    try { const x = new URL(u); return x.host + (x.pathname === "/" ? "" : x.pathname); } catch { return u; }
+  }
+  function itemHtml(it, time) {
+    return `<div class="item" tabindex="0" data-id="${esc(it.id)}" data-url="${esc(it.url)}">
+      <span class="ico">${ic("i-globe")}</span>
+      <div class="meta"><div class="t">${esc(it.title || it.url)}</div><div class="u">${esc(shortUrl(it.url))}</div></div>
+      ${time ? `<span class="tm">${esc(time)}</span>` : ""}
+      <button class="del" data-del title="削除" aria-label="削除">${ic("i-trash")}</button></div>`;
+  }
+  function dayLabel(iso) {
+    const d = new Date(iso), same = (a, b) => a.toDateString() === b.toDateString();
+    if (same(d, new Date())) return "今日";
+    if (same(d, new Date(Date.now() - 864e5))) return "昨日";
+    return d.toLocaleDateString();
+  }
+
+  function renderSidebar() {
+    if (sb().hidden) return;
+    for (const b of sb().querySelectorAll("[data-panel]")) b.classList.toggle("active", b.dataset.panel === panel);
+    const act = $("#sb-action");
+    act.hidden = false;
+    if (panel === "bookmarks") { act.textContent = "このページを追加"; act.className = "btn"; }
+    else { act.textContent = "すべて削除"; act.className = "btn danger"; act.hidden = !S().user || !S().history.length; }
+    renderList();
+  }
+
+  function renderList() {
+    const list = $("#sb-list");
+    if (!list) return;
+    const match = (x) => !query || (x.title || "").toLowerCase().includes(query) || x.url.toLowerCase().includes(query);
+    if (panel === "bookmarks") {
+      const items = S().bookmarks.filter(match);
+      list.innerHTML = items.length ? items.map((b) => itemHtml(b)).join("")
+        : `<div class="empty">${query ? "一致する項目がありません。" : "ブックマークはまだありません。<br>アドレスバーの星ボタンで追加できます。"}</div>`;
       return;
     }
-    el.hidden = true; return;
-  }
-  el.textContent = msg;
-  el.style.color = isError ? "#d93025" : "";
-  el.hidden = false;
-}
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, rej) => setTimeout(() => rej(new Error(label + " timed out (" + ms / 1000 + "s)")), ms)),
-  ]);
-}
-function testWisp(url) {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
-    try {
-      const ws = new WebSocket(url);
-      ws.onopen = () => { ws.close(); finish(true); };
-      ws.onerror = () => finish(false);
-      setTimeout(() => finish(false), 8000);
-    } catch { finish(false); }
-  });
-}
-
-function showError(msg) {
-  console.error(msg);
-  const el = $("#status");
-  el.textContent = "Error: " + msg;
-  el.hidden = false;
-}
-window.addEventListener("error", (e) => showError(e.message));
-window.addEventListener("unhandledrejection", (e) => showError(String(e.reason && e.reason.message || e.reason)));
-
-function normalize(input) {
-  input = input.trim();
-  if (!input) return null;
-  try { return new URL(input).toString(); } catch {}
-  if (/^[^\s]+\.[^\s]{2,}$/.test(input) && !input.includes(" ")) {
-    try { return new URL("https://" + input).toString(); } catch {}
-  }
-  return SEARCH.replace("%s", encodeURIComponent(input));
-}
-
-function svgIcon(id) {
-  return `<svg><use href="#${id}"/></svg>`;
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = src; s.onload = resolve;
-    s.onerror = () => reject(new Error("Failed to load " + src));
-    document.head.appendChild(s);
-  });
-}
-
-async function init() {
-  if (!("serviceWorker" in navigator)) throw new Error("Service workers are not supported.");
-
-  // Detect which Scramjet build files the server has.
-  const present = await (await fetch("/scram-files.json")).json();
-  const has = (n) => present.includes(n);
-  const bundle = ["scramjet.all.js", "scramjet.worker.js"].find(has);
-  if (!bundle) throw new Error("Scramjet bundle not found. Files: " + present.join(", "));
-  await loadScript("/scram/" + bundle);
-  if (typeof $scramjetLoadController !== "function") {
-    throw new Error("Unsupported Scramjet build ($scramjetLoadController missing). Files: " + present.join(", "));
-  }
-
-  const files = {};
-  for (const [key, name] of [["wasm", "scramjet.wasm.wasm"], ["all", "scramjet.all.js"], ["sync", "scramjet.sync.js"],
-                             ["worker", "scramjet.worker.js"], ["client", "scramjet.client.js"], ["shared", "scramjet.shared.js"]]) {
-    if (has(name)) files[key] = "/scram/" + name;
-  }
-  if (!files.wasm && has("scramjet.wasm.js")) files.wasm = "/scram/scramjet.wasm.js";
-
-  const { ScramjetController } = $scramjetLoadController();
-  scramjet = new ScramjetController({ prefix: "/service/", files });
-
-  setStatus("Starting: initializing Scramjet...");
-  await withTimeout(scramjet.init(), 10000, "scramjet.init");
-  setStatus("Starting: registering service worker...");
-  await withTimeout(navigator.serviceWorker.register("/sw.js", { scope: "/" }), 10000, "service worker register");
-  await withTimeout(navigator.serviceWorker.ready, 10000, "service worker activation");
-
-  const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
-  const wisp = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/wisp/";
-  setStatus("Starting: connecting transport...");
-  await withTimeout(connection.setTransport("/libcurl/index.mjs", [{ wisp }]), 15000, "transport setup");
-  setStatus("Starting: checking Wisp connection...");
-  if (!(await testWisp(wisp))) {
-    setStatus("Warning: cannot open Wisp WebSocket (" + wisp + "). Sites will not load.", true);
-  } else {
-    setStatus("");
-  }
-
-  renderShortcuts();
-  bindUI();
-  newTab();
-}
-
-function renderShortcuts() {
-  const box = $("#shortcuts");
-  for (const s of SHORTCUTS) {
-    const a = document.createElement("button");
-    a.className = "sc";
-    a.innerHTML = `<span class="ic">${svgIcon("i-globe")}</span><span>${s.name}</span>`;
-    a.onclick = () => navigate(s.url);
-    box.appendChild(a);
-  }
-}
-
-function newTab(url) {
-  const id = nextId++;
-  const iframe = document.createElement("iframe");
-  $("#frames").appendChild(iframe);
-  const frame = scramjet.createFrame(iframe);
-  const tab = { id, iframe, frame, title: "New Tab", url: "", el: null, favSrc: "" };
-
-  const el = document.createElement("div");
-  el.className = "tab";
-  el.innerHTML = `<span class="fav">${svgIcon("i-globe")}</span><span class="title">New Tab</span><button class="x" aria-label="Close tab">${svgIcon("i-close")}</button>`;
-  el.onclick = () => activate(id);
-  el.querySelector(".x").onclick = (e) => { e.stopPropagation(); closeTab(id); };
-  $("#tabs").appendChild(el);
-  tab.el = el;
-  tabs.push(tab);
-
-  iframe.addEventListener("load", () => {
-    clearTimeout(tab.loadTimer);
-    if (tab.id === activeId) setStatus("");
-    attachKeys(tab);
-    syncTab(tab);
-    setTimeout(() => { attachKeys(tab); syncTab(tab); recordHistory(tab); }, 800);
-  });
-  activate(id);
-  if (url) navigate(url);
-  else $("#address").focus();
-}
-
-function current() { return tabs.find((t) => t.id === activeId); }
-
-function activate(id) {
-  activeId = id;
-  for (const t of tabs) {
-    t.el.classList.toggle("active", t.id === id);
-    t.iframe.classList.toggle("active", t.id === id);
-  }
-  const t = current();
-  $("#newtab-page").classList.toggle("hidden", !!t.url);
-  if (!addrDirty) $("#address").value = t.url;
-  updateStar();
-  updateFullscreenButtons();
-}
-
-function closeTab(id) {
-  const i = tabs.findIndex((t) => t.id === id);
-  if (i < 0) return;
-  const [t] = tabs.splice(i, 1);
-  t.el.remove(); t.iframe.remove();
-  if (!tabs.length) return newTab();
-  if (activeId === id) activate(tabs[Math.max(0, i - 1)].id);
-}
-
-function navigate(input) {
-  const url = normalize(input);
-  const t = current();
-  if (!url || !t) return;
-  t.url = url;
-  setTitle(t, new URL(url).hostname);
-  setFavicon(t, "");
-  $("#newtab-page").classList.add("hidden");
-  $("#address").value = url;
-  updateStar();
-  updateFullscreenButtons();
-  setStatus("Loading " + new URL(url).hostname + "...");
-  clearTimeout(t.loadTimer);
-  t.loadTimer = setTimeout(() => setStatus("Still loading. The transport or Wisp connection may be stuck (open the browser console for details).", true), 20000);
-  try { t.frame.go(url); } catch (e) { showError(e.message); }
-}
-
-function proxiedUrl(u) {
-  try { if (scramjet && typeof scramjet.encodeUrl === "function") return scramjet.encodeUrl(u); } catch {}
-  return "/service/" + encodeURIComponent(u);
-}
-
-// Find the page's favicon (through the proxy) or fall back to /favicon.ico.
-function findFavicon(tab) {
-  try {
-    const doc = tab.iframe.contentDocument;
-    const link = doc && doc.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i], link[rel="apple-touch-icon"]');
-    const raw = link && link.getAttribute("href");
-    if (raw) {
-      if (raw.startsWith("data:") || raw.includes("/service/")) return raw;
-      return proxiedUrl(new URL(raw, tab.url).toString());
+    if (!MirageData.enabled) { list.innerHTML = `<div class="empty">このサーバーではアカウント機能が設定されていないため、履歴は使えません。</div>`; return; }
+    if (!S().user) { list.innerHTML = `<div class="empty">サインインすると履歴を保存・閲覧できます。<br><button class="btn primary" id="sb-signin">サインイン</button></div>`; return; }
+    const items = S().history.filter(match);
+    if (!items.length) { list.innerHTML = `<div class="empty">${query ? "一致する項目がありません。" : "履歴はまだありません。"}</div>`; return; }
+    let last = "", html = "";
+    for (const h of items) {
+      const lab = dayLabel(h.visited_at);
+      if (lab !== last) { html += `<div class="group">${esc(lab)}</div>`; last = lab; }
+      html += itemHtml(h, new Date(h.visited_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     }
-  } catch {}
-  try { return proxiedUrl(new URL("/favicon.ico", tab.url).toString()); } catch { return ""; }
-}
+    list.innerHTML = html;
+  }
 
-function setFavicon(tab, src) {
-  if (tab.favSrc === src) return;
-  tab.favSrc = src;
-  const holder = tab.el.querySelector(".fav");
-  if (!src) { holder.innerHTML = svgIcon("i-globe"); return; }
-  const img = new Image();
-  img.alt = "";
-  img.onerror = () => { if (tab.favSrc === src) holder.innerHTML = svgIcon("i-globe"); };
-  img.src = src;
-  holder.replaceChildren(img);
-}
+  // Translate common Supabase auth errors.
+  function jaError(m) {
+    m = String(m || "");
+    if (/Invalid login credentials/i.test(m)) return "メールアドレスかパスワードが正しくありません。";
+    if (/already registered|already been registered/i.test(m)) return "このメールアドレスは既に登録されています。";
+    if (/Password should be at least|weak password/i.test(m)) return "パスワードは6文字以上にしてください。";
+    if (/Email not confirmed/i.test(m)) return "メールアドレスの確認が完了していません。確認メールのリンクを開いてください。";
+    if (/rate limit|too many/i.test(m)) return "リクエストが多すぎます。しばらくしてからもう一度お試しください。";
+    if (/invalid.*email|Unable to validate email/i.test(m)) return "メールアドレスの形式が正しくありません。";
+    if (/Failed to fetch|NetworkError/i.test(m)) return "通信に失敗しました。ネットワークを確認してください。";
+    return m;
+  }
 
-function setTitle(t, title) {
-  t.title = title;
-  t.el.querySelector(".title").textContent = title;
-}
+  // ---------- account ----------
+  let accMode = "signin";
+  const dlgAcc = () => $("#dlg-account");
 
-function syncTab(tab) {
-  attachKeys(tab);
-  if (!tab.url) return;
-  try {
-    const doc = tab.iframe.contentDocument;
-    if (doc && doc.title && doc.title !== tab.title) setTitle(tab, doc.title);
-    const real = tab.frame.url ? toRealUrl(tab.frame.url) : null;
-    if (real && real !== tab.url) {
-      tab.url = real;
-      if (tab.id === activeId) updateStar();
+  function avatarHtml(url) {
+    return url ? `<img src="${esc(url)}" crossorigin="anonymous" alt="">` : ic("i-person");
+  }
+  function refreshAvatarBtn() {
+    const slot = $("#avatar-slot"), p = S().profile;
+    slot.innerHTML = avatarHtml(p && p.avatar_url);
+    const img = slot.querySelector("img");
+    if (img) img.addEventListener("error", () => { slot.innerHTML = ic("i-person"); });
+    $("#btn-account").title = S().user ? (p && p.username) || "アカウント" : "サインイン";
+  }
+
+  function openAccount() { renderAccount(); if (!dlgAcc().open) dlgAcc().showModal(); }
+
+  function renderAccount() {
+    const d = dlgAcc(), st = S();
+    let body;
+    if (!MirageData.enabled) {
+      body = `<p class="note">このサーバーではアカウント機能が設定されていません。環境変数 SUPABASE_URL と公開キー(SUPABASE_PUBLISHABLE_KEY または SUPABASE_ANON_KEY)を設定してください。ブックマークと設定はこのブラウザに保存されます。</p>`;
+    } else if (!st.user) {
+      const up = accMode === "signup";
+      body = `
+        <div class="seg"><button data-mode="signin" class="${up ? "" : "active"}">サインイン</button><button data-mode="signup" class="${up ? "active" : ""}">新規登録</button></div>
+        <form id="acc-form">
+          ${up ? `<label class="field"><span>ユーザーネーム</span><input type="text" name="username" required minlength="2" maxlength="20" autocomplete="username"></label>` : ""}
+          <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="email"></label>
+          <label class="field"><span>パスワード</span><input type="password" name="password" required minlength="6" autocomplete="${up ? "new-password" : "current-password"}"></label>
+          <div class="msg" id="acc-msg" role="status"></div>
+          <button class="btn primary" type="submit">${up ? "アカウントを作成" : "サインイン"}</button>
+        </form>
+        <p class="note">サインイン前に保存したブックマークは、アカウントに追加されます。履歴はサインイン中のみ保存されます。</p>`;
+    } else {
+      const p = st.profile || {};
+      body = `
+        <div class="acc-top">
+          <div class="acc-avatar">${avatarHtml(p.avatar_url)}</div>
+          <div><button class="btn" id="acc-photo">画像を変更</button><input type="file" id="acc-file" accept="image/*" hidden></div>
+        </div>
+        <div class="field"><span>ユーザーネーム</span><div class="row"><input type="text" id="acc-name" value="${esc(p.username || "")}" minlength="2" maxlength="20"><button class="btn primary" id="acc-save">保存</button></div></div>
+        <div class="field"><span>メールアドレス</span><div class="static">${esc(st.user.email || "")}</div></div>
+        <div class="msg" id="acc-msg" role="status"></div>
+        <button class="btn danger" id="acc-out">サインアウト</button>`;
     }
-    // Never overwrite the address bar while the user is typing in it.
-    const addr = $("#address");
-    if (tab.id === activeId && !addrDirty && document.activeElement !== addr) addr.value = tab.url;
-  } catch {}
-  setFavicon(tab, findFavicon(tab));
-}
-
-// Titles and icons can change after load; keep tabs in sync.
-setInterval(() => tabs.forEach(syncTab), 1500);
-
-function updateFullscreenButtons() {
-  const active = document.body.classList.contains("site-fullscreen");
-  const label = active ? "全画面を終了" : "サイトを全画面表示";
-  for (const button of [$("#btn-fullscreen"), $("#fullscreen-exit")]) {
-    if (!button) continue;
-    button.title = label;
-    button.setAttribute("aria-label", label);
-    const icon = button.querySelector("use");
-    if (icon) icon.setAttribute("href", active ? "#i-exit-fullscreen" : "#i-fullscreen");
+    d.innerHTML = `<div class="dlg-head"><h2>アカウント</h2><button class="icon-btn small" data-close aria-label="閉じる">${ic("i-close")}</button></div><div class="dlg-body">${body}</div>`;
+    const img = d.querySelector(".acc-avatar img");
+    if (img) img.addEventListener("error", () => { img.parentElement.innerHTML = ic("i-person"); });
+    wireAccount(d);
   }
-  const toggle = $("#btn-fullscreen");
-  if (toggle) {
-    toggle.disabled = !active && !(current() && current().url);
-    toggle.setAttribute("aria-pressed", String(active));
-  }
-}
 
-function onFullscreenChange() {
-  if (!document.fullscreenElement && document.body.classList.contains("site-fullscreen")) {
-    document.body.classList.remove("site-fullscreen");
-  }
-  updateFullscreenButtons();
-}
+  function wireAccount(d) {
+    const msg = (text, kind) => { const m = d.querySelector("#acc-msg"); if (m) { m.textContent = text || ""; m.className = "msg " + (kind || ""); } };
+    d.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { accMode = b.dataset.mode; renderAccount(); }));
 
-async function toggleSiteFullscreen() {
-  const active = document.body.classList.contains("site-fullscreen");
-  if (active) {
-    document.body.classList.remove("site-fullscreen");
-    try { if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen(); } catch {}
-  } else {
-    const tab = current();
-    if (!tab || !tab.url) return;
-    document.body.classList.add("site-fullscreen");
-    try {
-      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-      }
-    } catch { /* Keep the in-page fullscreen layout if browser fullscreen is unavailable. */ }
-  }
-  updateFullscreenButtons();
-}
-function bindUI() {
-  $("#newtab").onclick = () => newTab();
-  $("#back").onclick = () => current()?.frame.back();
-  $("#forward").onclick = () => current()?.frame.forward();
-  $("#reload").onclick = () => current()?.frame.reload();
-  $("#home").onclick = () => { const t = current(); t.url = ""; activate(t.id); };
-  $("#btn-fullscreen").addEventListener("click", toggleSiteFullscreen);
-  $("#fullscreen-exit").addEventListener("click", toggleSiteFullscreen);
-  document.addEventListener("fullscreenchange", onFullscreenChange);
-  const addr = $("#address");
-  addr.addEventListener("input", () => { addrDirty = true; });
-  addr.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { addrDirty = false; navigate(addr.value); addr.blur(); }
-    else if (e.key === "Escape") { addrDirty = false; addr.value = (current() && current().url) || ""; addr.blur(); }
-  });
-  addr.addEventListener("focus", () => addr.select());
-  addr.addEventListener("blur", () => { addrDirty = false; const t = current(); addr.value = t ? t.url : ""; });
+    const form = d.querySelector("#acc-form");
+    if (form) form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form), btn = form.querySelector("button[type=submit]");
+      btn.disabled = true; msg("");
+      try {
+        if (accMode === "signup") {
+          const r = await MirageData.signUp(fd.get("email"), fd.get("password"), String(fd.get("username") || "").trim());
+          if (r.needsConfirm) msg("確認メールを送信しました。メール内のリンクを開いてからサインインしてください。", "ok");
+        } else {
+          await MirageData.signIn(fd.get("email"), fd.get("password"));
+        }
+      } catch (err) { msg(jaError(err.message), "err"); }
+      btn.disabled = false;
+    });
 
-  $("#star").onclick = async () => {
-    const t = current();
-    if (!t || !t.url) return;
-    try {
-      const b = MirageData.findBookmark(t.url);
-      if (b) await MirageData.removeBookmark(b.id);
-      else await MirageData.addBookmark({ title: t.title, url: t.url });
-    } catch (e) { showError(e.message); }
-  };
-  $("#ntp-form").addEventListener("submit", (e) => { e.preventDefault(); navigate($("#ntp-input").value); });
-  document.addEventListener("keydown", onShortcut);
-}
-
-// An older Scramjet build may have left an IndexedDB with a different schema.
-// Clear it (and any old service workers) once, then reload.
-async function resetStaleState() {
-  try {
-    for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister();
-  } catch {}
-  const names = new Set(["$scramjet"]);
-  try {
-    for (const db of (await indexedDB.databases?.()) || []) {
-      if (db.name && /scramjet/i.test(db.name)) names.add(db.name);
-    }
-  } catch {}
-  await Promise.all([...names].map((n) => new Promise((res) => {
-    const r = indexedDB.deleteDatabase(n);
-    r.onsuccess = r.onerror = r.onblocked = () => res();
-  })));
-}
-
-async function diagnose() {
-  const out = [];
-  try {
-    for (const db of (await indexedDB.databases?.()) || []) {
-      const stores = await new Promise((res) => {
-        const r = indexedDB.open(db.name);
-        r.onsuccess = () => { const l = [...r.result.objectStoreNames]; r.result.close(); res(l); };
-        r.onerror = () => res(["?"]);
+    const photo = d.querySelector("#acc-photo"), file = d.querySelector("#acc-file");
+    if (photo) {
+      photo.addEventListener("click", () => file.click());
+      file.addEventListener("change", async () => {
+        if (!file.files[0]) return;
+        msg("アップロード中...");
+        try { await MirageData.uploadAvatar(file.files[0]); }
+        catch (err) { msg(jaError(err.message), "err"); }
       });
-      out.push(`${db.name} v${db.version} [${stores.join(",")}]`);
     }
-  } catch {}
-  return out.join(" | ") || "no databases";
-}
-
-// Public hooks for ui.js (sidebar opens links in the current or a new tab).
-window.MirageApp = { navigate: (u) => navigate(u), newTab: (u) => newTab(u), current };
-
-MirageUI.init();
-MirageData.on("bookmarks", updateStar);
-MirageData.init().catch((e) => console.error("account init failed", e));
-
-if (new URLSearchParams(location.search).has("reset")) {
-  sessionStorage.removeItem("mirage-reset");
-  resetStaleState().then(() => location.replace("/"));
-} else init().catch(async (e) => {
-  const msg = (e && e.message) || String(e);
-  const stale = /object stores?|IDBDatabase|NotFoundError/i.test(msg);
-  if (stale && !sessionStorage.getItem("mirage-reset")) {
-    sessionStorage.setItem("mirage-reset", "1");
-    await resetStaleState();
-    location.reload();
-    return;
+    const save = d.querySelector("#acc-save");
+    if (save) save.addEventListener("click", async () => {
+      save.disabled = true; msg("");
+      try { await MirageData.updateUsername(d.querySelector("#acc-name").value); msg("保存しました。", "ok"); }
+      catch (err) { msg(jaError(err.message), "err"); }
+      save.disabled = false;
+    });
+    const out = d.querySelector("#acc-out");
+    if (out) out.addEventListener("click", async () => { await MirageData.signOut(); });
   }
-  showError("Mirage failed to start: " + msg + " (IndexedDB: " + await diagnose() + ")");
-});
+
+  // ---------- settings ----------
+  const dlgSet = () => $("#dlg-settings");
+
+  function renderSettings() {
+    const d = dlgSet(), s = S().settings;
+    d.innerHTML = `
+      <div class="dlg-head"><h2>設定</h2><button class="icon-btn small" data-close aria-label="閉じる">${ic("i-close")}</button></div>
+      <div class="dlg-body">
+        <section>
+          <h3>テーマ</h3>
+          <div class="grid">${THEMES.map((t) => `<button class="card" data-theme="${t.id}"><span class="sw" style="background:${t.bg}"></span><span>${t.name}</span></button>`).join("")}</div>
+          <h4>アクセントカラー</h4>
+          <div class="accents">${Object.entries(ACCENTS).map(([k, v]) => `<button class="dot" data-accent="${k}" style="background:${v}" title="${k}" aria-label="${k}"></button>`).join("")}</div>
+        </section>
+        <section>
+          <h3>ページフィルター</h3>
+          <p class="note">横から覗かれても読みにくくするフィルターです。Alt+P ですばやく切り替えられます。物理的なプライバシーフィルムのように視野角で見えなくなるものではなく、見づらくすることで内容を隠します。</p>
+          <div class="grid">${FILTERS.map((f) => `<button class="card" data-filter="${f.id}"><span class="fl"><span class="fl-ov" data-prev="${f.id}"></span></span><span>${f.name}</span></button>`).join("")}</div>
+          <label class="field"><span>強さ <b id="f-val"></b></span><input id="f-range" type="range" min="10" max="100" step="5"></label>
+          <div class="fprev"><p>これはフィルターの見え方を確かめるサンプル文です。0123456789</p><p>フィルター越しのページのプレビューです。</p><div class="fprev-ov" id="fprev"></div></div>
+        </section>
+        <section>
+          <h3>タブの表示</h3>
+          <p class="note">ブラウザのタブに表示される、Mirage 自体のタイトルとアイコンを変更します。開いているサイトのタイトルやアイコンには影響しません。</p>
+          <div class="grid">${TAB_TEMPLATES.map((t) => `<button class="card" data-tabtpl="${t.id}"><span class="tpl-title">${esc(t.title || DEFAULT_TITLE)}</span><span>${esc(t.name)}</span></button>`).join("")}</div>
+          <label class="field"><span>タイトル</span><input type="text" id="tb-title" maxlength="100" placeholder="${DEFAULT_TITLE}"></label>
+          <label class="field"><span>アイコンのURL</span><input type="text" id="tb-icon" placeholder="https://example.com/icon.png" autocomplete="off"></label>
+          <div class="msg" id="tb-msg" role="status"></div>
+          <div class="row-btns"><button class="btn primary" id="tb-apply">適用</button><button class="btn" id="tb-reset">デフォルトに戻す</button></div>
+        </section>
+        <section>
+          <h3>自動ロック</h3>
+          <p class="note">別のタブに移動すると、サイト全体をぼかしてロックします。事前に決めたパスワードを入力するまで戻れません。パスワードはこのブラウザにだけ保存され、アカウントには保存されません。</p>
+          <label class="check"><input type="checkbox" id="lk-enabled"><span>タブを離れたら自動でロックする</span></label>
+          <label class="check"><input type="checkbox" id="lk-blur"><span>別のウィンドウに切り替えたときもロックする</span></label>
+          <p class="note">2つ目は、ブラウザのアドレスバーなどをクリックした場合もロックされます。</p>
+          <div class="field"><span>パスワード(3文字以上) <b id="lk-status"></b></span>
+            <input type="password" id="lk-pw" minlength="3" maxlength="64" autocomplete="new-password" placeholder="新しいパスワード">
+            <div class="row"><input type="password" id="lk-pw2" minlength="3" maxlength="64" autocomplete="new-password" placeholder="もう一度入力"><button class="btn primary" id="lk-set">設定</button></div>
+          </div>
+          <div class="msg" id="lk-msg" role="status"></div>
+          <div class="row-btns"><button class="btn" id="lk-now">今すぐロック (Alt+L)</button><button class="btn danger" id="lk-clear">パスワードを削除</button></div>
+        </section>
+        <section>
+          <h3>同期</h3>
+          <p class="note">${S().user ? "設定はアカウントに保存されます。" : MirageData.enabled ? "設定はこのブラウザに保存されます。サインインするとアカウントに保存されます。" : "設定はこのブラウザに保存されます。"}</p>
+        </section>
+      </div>`;
+    // tiny previews inside each filter card
+    d.querySelectorAll("[data-prev]").forEach((el) => {
+      el.style.cssText = "position:absolute;inset:0;";
+      const st = filterStyle(el.dataset.prev, 70);
+      if (st) { Object.assign(el.style, st); }
+      el.parentElement.style.backgroundImage = "linear-gradient(#222 2px, transparent 2px)";
+      el.parentElement.style.backgroundSize = "100% 6px";
+    });
+    syncSettingsDialog();
+    syncLockUi();
+  }
+
+  function syncLockUi() {
+    const d = dlgSet(), en = d.querySelector("#lk-enabled");
+    if (!en) return;
+    const has = MirageLock.hasPassword();
+    en.checked = MirageLock.isEnabled(); en.disabled = !has;
+    const bl = d.querySelector("#lk-blur");
+    bl.checked = MirageLock.isOnBlur(); bl.disabled = !has;
+    d.querySelector("#lk-status").textContent = has ? "(設定済み)" : "(未設定)";
+    d.querySelector("#lk-set").textContent = has ? "変更" : "設定";
+    d.querySelector("#lk-clear").hidden = !has;
+    d.querySelector("#lk-now").disabled = !has;
+  }
+
+  function wireTab() {
+    const d = dlgSet();
+    const msg = (t, k) => { const m = d.querySelector("#tb-msg"); if (m) { m.textContent = t || ""; m.className = "msg " + (k || ""); } };
+    d.addEventListener("click", (e) => {
+      const tpl = e.target.closest("button[data-tabtpl]");
+      if (tpl) {
+        const t = TAB_TEMPLATES.find((x) => x.id === tpl.dataset.tabtpl);
+        if (t) { MirageData.setSettings({ tab: { title: t.title, icon: t.icon } }); msg("適用しました。", "ok"); }
+      } else if (e.target.closest("#tb-apply")) {
+        const title = d.querySelector("#tb-title").value.trim().slice(0, 100);
+        const icon = d.querySelector("#tb-icon").value.trim();
+        if (icon && !validIconUrl(icon)) return msg("アイコンのURLは、http(s):// から始まる画像のURLを入力してください。", "err");
+        MirageData.setSettings({ tab: { title, icon } });
+        msg("適用しました。", "ok");
+      } else if (e.target.closest("#tb-reset")) {
+        MirageData.setSettings({ tab: { title: "", icon: "" } });
+        msg("デフォルトに戻しました。", "ok");
+      }
+    });
+  }
+
+  function wireLock() {
+    const d = dlgSet();
+    const msg = (t, k) => { const m = d.querySelector("#lk-msg"); if (m) { m.textContent = t || ""; m.className = "msg " + (k || ""); } };
+    d.addEventListener("change", (e) => {
+      if (e.target.id === "lk-enabled") MirageLock.setEnabled(e.target.checked);
+      else if (e.target.id === "lk-blur") MirageLock.setOnBlur(e.target.checked);
+    });
+    d.addEventListener("click", async (e) => {
+      if (e.target.closest("#lk-set")) {
+        const p1 = d.querySelector("#lk-pw").value, p2 = d.querySelector("#lk-pw2").value;
+        if (p1.length < 3) return msg("パスワードは3文字以上にしてください。", "err");
+        if (p1 !== p2) return msg("確認用のパスワードが一致しません。", "err");
+        try {
+          await MirageLock.setPassword(p1);
+          d.querySelector("#lk-pw").value = ""; d.querySelector("#lk-pw2").value = "";
+          msg("パスワードを設定しました。", "ok");
+          syncLockUi();
+        } catch (err) { msg(err.message, "err"); }
+      } else if (e.target.closest("#lk-now")) {
+        d.close();
+        MirageLock.lockNow();
+      } else if (e.target.closest("#lk-clear")) {
+        if (!confirm("パスワードを削除すると、自動ロックは無効になります。よろしいですか?")) return;
+        MirageLock.clearPassword();
+        msg("パスワードを削除しました。", "ok");
+        syncLockUi();
+      }
+    });
+  }
+
+  function syncSettingsDialog() {
+    const d = dlgSet();
+    if (!d.open) return;
+    const s = S().settings;
+    d.querySelectorAll("[data-theme]").forEach((b) => b.classList.toggle("sel", b.dataset.theme === s.theme));
+    d.querySelectorAll("[data-accent]").forEach((b) => b.classList.toggle("sel", b.dataset.accent === s.accent));
+    d.querySelectorAll("[data-filter]").forEach((b) => b.classList.toggle("sel", b.dataset.filter === s.filter.type));
+    const r = d.querySelector("#f-range");
+    if (r && document.activeElement !== r) r.value = s.filter.strength;
+    d.querySelector("#f-val").textContent = s.filter.strength + "%";
+    paint(d.querySelector("#fprev"), s.filter.type === "off" ? null : filterStyle(s.filter.type, s.filter.strength));
+    const tb = s.tab || { title: "", icon: "" };
+    const ti = d.querySelector("#tb-title"), ii = d.querySelector("#tb-icon");
+    if (ti && document.activeElement !== ti) ti.value = tb.title || "";
+    if (ii && document.activeElement !== ii) ii.value = tb.icon || "";
+    d.querySelectorAll("[data-tabtpl]").forEach((b) => {
+      const t = TAB_TEMPLATES.find((x) => x.id === b.dataset.tabtpl);
+      b.classList.toggle("sel", !!t && t.title === (tb.title || "") && t.icon === (tb.icon || ""));
+    });
+  }
+
+  function openSettings() { renderSettings(); dlgSet().showModal(); syncSettingsDialog(); }
+
+  function wireSettings() {
+    const d = dlgSet();
+    d.addEventListener("click", (e) => {
+      // Match buttons only: <html> itself carries data-theme / data-accent attributes.
+      const t = e.target.closest("button[data-theme]"), a = e.target.closest("button[data-accent]"), f = e.target.closest("button[data-filter]");
+      if (t) MirageData.setSettings({ theme: t.dataset.theme });
+      else if (a) MirageData.setSettings({ accent: a.dataset.accent });
+      else if (f) MirageData.setSettings({ filter: { type: f.dataset.filter } });
+    });
+    d.addEventListener("input", (e) => {
+      if (e.target.id === "f-range") MirageData.setSettings({ filter: { strength: Number(e.target.value) } });
+    });
+  }
+
+  // ---------- init ----------
+  function init() {
+    buildSidebar();
+    applyTheme(); applyFilter(); applyTab(); refreshAvatarBtn();
+
+    $("#btn-sidebar").onclick = toggleSidebar;
+    $("#btn-settings").onclick = openSettings;
+    $("#btn-account").onclick = openAccount;
+    for (const d of [dlgSet(), dlgAcc()]) {
+      d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-close]")) d.close(); });
+    }
+    wireSettings();
+    wireLock();
+    wireTab();
+
+    MirageData.on("settings", () => { applyTheme(); applyFilter(); applyTab(); syncSettingsDialog(); });
+    MirageData.on("auth", () => {
+      refreshAvatarBtn();
+      if (dlgAcc().open) renderAccount();
+      if (dlgSet().open) renderSettings();
+      renderSidebar();
+      if (!sb().hidden && panel === "history") MirageData.loadHistory();
+    });
+    MirageData.on("bookmarks", renderSidebar);
+    MirageData.on("history", renderSidebar);
+  }
+
+  return { init, toggleFilter, openSidebar, closeSidebar, openAccount };
+})();
