@@ -86,17 +86,14 @@ body.site-fullscreen #sidebar{display:none!important}
 #status{z-index:10;position:fixed;left:0;bottom:0;max-width:60%;padding:2px 10px;background:var(--toolbar);border:1px solid var(--border);border-left:0;border-bottom:0;border-radius:0 6px 0 0;font-size:12px}
 
 /* Sidebar */
-#sidebar{width:320px;flex:none;display:flex;flex-direction:column;background:var(--toolbar);min-height:0;box-shadow:-1px 0 0 var(--border)}
+#sidebar{width:320px;flex:none;display:flex;flex-direction:column;background:var(--toolbar);min-height:0;border-left:2px solid color-mix(in srgb,var(--text) 32%,transparent);box-shadow:-8px 0 16px -8px rgba(0,0,0,.25)}
 #sidebar[hidden]{display:none}
-.sb-head{display:flex;align-items:flex-end;justify-content:space-between;height:42px;flex:none;padding:8px 8px 0 8px;background:var(--frame);user-select:none}
-.sb-tabs{display:flex;align-items:flex-end}
-.sb-tabs button{position:relative;height:34px;padding:0 16px;border-radius:8px 8px 0 0;color:var(--muted);font-weight:500}
-.sb-tabs button:hover{background:var(--tab-hover)}
-.sb-tabs button.active{background:var(--toolbar);color:var(--text)}
-.sb-tabs button.active::before,.sb-tabs button.active::after{content:"";position:absolute;bottom:0;width:8px;height:8px;background:transparent}
-.sb-tabs button.active::before{left:-8px;border-bottom-right-radius:8px;box-shadow:4px 4px 0 4px var(--toolbar)}
-.sb-tabs button.active::after{right:-8px;border-bottom-left-radius:8px;box-shadow:-4px 4px 0 4px var(--toolbar)}
-.sb-head .icon-btn.small{margin:0 0 3px}
+.sb-head{display:flex;align-items:center;justify-content:space-between;height:42px;flex:none;padding:0 8px 0 10px;background:var(--frame);border-bottom:1px solid color-mix(in srgb,var(--text) 22%,transparent);user-select:none}
+.sb-tabs{display:flex;gap:2px;padding:2px;border-radius:999px;background:var(--omni)}
+.sb-tabs button{height:28px;padding:0 14px;border-radius:999px;color:var(--muted);font-weight:500}
+.sb-tabs button:hover{color:var(--text)}
+.sb-tabs button.active{background:var(--accent);color:#fff}
+.sb-head .icon-btn.small{margin:0}
 .sb-tools{display:grid;grid-template-columns:minmax(0,1fr) max-content;gap:8px;padding:10px 12px;align-items:center}
 .sb-search{flex:1;min-width:0;display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:15px;background:var(--omni)}
 #sb-action{min-width:max-content}
