@@ -9,6 +9,31 @@ const SHORTCUTS = [
 ];
 
 let scramjet, tabs = [], activeId = null, nextId = 1;
+let addrDirty = false;   // true while the user is editing the address bar
+
+// If a proxied (encoded) URL ever leaks through, turn it back into the real URL.
+function toRealUrl(u) {
+  const s = String(u);
+  const prefix = "/service/";
+  if (s.startsWith(prefix)) { try { return decodeURIComponent(s.slice(prefix.length)); } catch {} }
+  if (s.startsWith(location.origin + prefix)) { try { return decodeURIComponent(s.slice(location.origin.length + prefix.length)); } catch {} }
+  return s;
+}
+
+function updateStar() {
+  const t = current();
+  const on = !!(t && t.url && MirageData.isBookmarked(t.url));
+  const b = $("#star");
+  b.classList.toggle("on", on);
+  b.querySelector("use").setAttribute("href", on ? "#i-star-fill" : "#i-star");
+  b.title = on ? "Remove bookmark" : "Bookmark this page";
+}
+
+function recordHistory(tab) {
+  if (!tab.url || !/^https?:/i.test(tab.url) || tab.lastLogged === tab.url) return;
+  tab.lastLogged = tab.url;
+  MirageData.addHistory({ title: tab.title || tab.url, url: tab.url });
+}
 
 function setStatus(msg, isError) {
   const el = $("#status");
@@ -144,6 +169,7 @@ function newTab(url) {
     clearTimeout(tab.loadTimer);
     if (tab.id === activeId) setStatus("");
     syncTab(tab);
+    setTimeout(() => { syncTab(tab); recordHistory(tab); }, 800);
   });
   activate(id);
   if (url) navigate(url);
@@ -160,7 +186,8 @@ function activate(id) {
   }
   const t = current();
   $("#newtab-page").classList.toggle("hidden", !!t.url);
-  $("#address").value = t.url;
+  if (!addrDirty) $("#address").value = t.url;
+  updateStar();
 }
 
 function closeTab(id) {
@@ -181,6 +208,7 @@ function navigate(input) {
   setFavicon(t, "");
   $("#newtab-page").classList.add("hidden");
   $("#address").value = url;
+  updateStar();
   setStatus("Loading " + new URL(url).hostname + "...");
   clearTimeout(t.loadTimer);
   t.loadTimer = setTimeout(() => setStatus("Still loading. The transport or Wisp connection may be stuck (open the browser console for details).", true), 20000);
@@ -228,8 +256,14 @@ function syncTab(tab) {
   try {
     const doc = tab.iframe.contentDocument;
     if (doc && doc.title && doc.title !== tab.title) setTitle(tab, doc.title);
-    const real = tab.frame.url ? String(tab.frame.url) : null;
-    if (real) { tab.url = real; if (tab.id === activeId) $("#address").value = real; }
+    const real = tab.frame.url ? toRealUrl(tab.frame.url) : null;
+    if (real && real !== tab.url) {
+      tab.url = real;
+      if (tab.id === activeId) updateStar();
+    }
+    // Never overwrite the address bar while the user is typing in it.
+    const addr = $("#address");
+    if (tab.id === activeId && !addrDirty && document.activeElement !== addr) addr.value = tab.url;
   } catch {}
   setFavicon(tab, findFavicon(tab));
 }
@@ -243,16 +277,31 @@ function bindUI() {
   $("#forward").onclick = () => current()?.frame.forward();
   $("#reload").onclick = () => current()?.frame.reload();
   $("#home").onclick = () => { const t = current(); t.url = ""; activate(t.id); };
-  $("#address").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { navigate(e.target.value); e.target.blur(); }
+  const addr = $("#address");
+  addr.addEventListener("input", () => { addrDirty = true; });
+  addr.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { addrDirty = false; navigate(addr.value); addr.blur(); }
+    else if (e.key === "Escape") { addrDirty = false; addr.value = (current() && current().url) || ""; addr.blur(); }
   });
-  $("#address").addEventListener("focus", (e) => e.target.select());
+  addr.addEventListener("focus", () => addr.select());
+  addr.addEventListener("blur", () => { addrDirty = false; const t = current(); addr.value = t ? t.url : ""; });
+
+  $("#star").onclick = async () => {
+    const t = current();
+    if (!t || !t.url) return;
+    try {
+      const b = MirageData.findBookmark(t.url);
+      if (b) await MirageData.removeBookmark(b.id);
+      else await MirageData.addBookmark({ title: t.title, url: t.url });
+    } catch (e) { showError(e.message); }
+  };
   $("#ntp-form").addEventListener("submit", (e) => { e.preventDefault(); navigate($("#ntp-input").value); });
   document.addEventListener("keydown", (e) => {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key === "t") { e.preventDefault(); newTab(); }
     if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
     if (mod && e.key === "l") { e.preventDefault(); $("#address").focus(); }
+    if (e.altKey && (e.key === "p" || e.key === "P")) { e.preventDefault(); MirageUI.toggleFilter(); }
   });
 }
 
@@ -288,6 +337,13 @@ async function diagnose() {
   } catch {}
   return out.join(" | ") || "no databases";
 }
+
+// Public hooks for ui.js (sidebar opens links in the current or a new tab).
+window.MirageApp = { navigate: (u) => navigate(u), newTab: (u) => newTab(u), current };
+
+MirageUI.init();
+MirageData.on("bookmarks", updateStar);
+MirageData.init().catch((e) => console.error("account init failed", e));
 
 if (new URLSearchParams(location.search).has("reset")) {
   sessionStorage.removeItem("mirage-reset");
