@@ -7,7 +7,9 @@
 <script>
 try{var s=JSON.parse(localStorage.getItem("mirage:settings")||"{}");var t=s.theme||"system";
 if(t==="system")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
-document.documentElement.dataset.theme=t;document.documentElement.dataset.accent=s.accent||"blue";}catch(e){}
+document.documentElement.dataset.theme=t;document.documentElement.dataset.accent=s.accent||"blue";
+if(s.tab){if(s.tab.title)document.title=s.tab.title;if(s.tab.icon){var l=document.createElement("link");l.id="mirage-icon";l.rel="icon";l.href=s.tab.icon;document.head.appendChild(l);}}
+}catch(e){}
 </script>
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -42,6 +44,7 @@ document.documentElement.dataset.theme=t;document.documentElement.dataset.accent
     <div id="tabs"></div>
     <button id="newtab" class="icon-btn small" title="New tab" aria-label="New tab"><svg><use href="#i-plus"/></svg></button>
   </div>
+  <nav id="bookmark-bar" aria-label="ブックマークバー"></nav>
   <div id="toolbar">
     <button id="back" class="icon-btn" title="Back" aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <button id="forward" class="icon-btn" title="Forward" aria-label="Forward"><svg><use href="#i-forward"/></svg></button>
