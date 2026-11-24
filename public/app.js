@@ -39,6 +39,13 @@ function toRealUrl(u) {
 // because key events in an iframe do not reach the parent document.
 function onShortcut(e) {
   if (document.body.classList.contains("tab-locked")) return;
+  if (e.key === "Escape" && document.body.classList.contains("site-fullscreen") && !document.fullscreenElement) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.classList.remove("site-fullscreen");
+    updateFullscreenButtons();
+    return;
+  }
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key === "t") { e.preventDefault(); newTab(); }
   else if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
