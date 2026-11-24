@@ -41,7 +41,7 @@ function updateStar() {
   const b = $("#star");
   b.classList.toggle("on", on);
   b.querySelector("use").setAttribute("href", on ? "#i-star-fill" : "#i-star");
-  b.title = on ? "Remove bookmark" : "Bookmark this page";
+  b.title = on ? "ブックマークを削除" : "このページをブックマーク";
 }
 
 function recordHistory(tab) {
