@@ -183,6 +183,17 @@ const MirageUI = (() => {
     $("#sb-q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); renderList(); });
   }
 
+  function renderBookmarkBar() {
+    const bar = $("#bookmark-bar");
+    if (!bar) return;
+    const items = S().bookmarks || [];
+    bar.innerHTML = items.length
+      ? items.map((b) => {
+          const title = b.title || b.url;
+          return '<button class="bookmark-bar-item" type="button" data-bookmark-url="' + esc(b.url) + '" title="' + esc(title) + '">' + ic("i-bookmark") + '<span class="bookmark-bar-title">' + esc(title) + '</span></button>';
+        }).join("")
+      : '<span class="bookmark-bar-empty">ブックマークを追加するとここに表示されます</span>';
+  }
   function openItem(url, newTab) {
     if (newTab) window.MirageApp.newTab(url); else window.MirageApp.navigate(url);
   }
@@ -232,6 +243,8 @@ const MirageUI = (() => {
     act.hidden = false;
     if (panel === "bookmarks") { act.textContent = "このページを追加"; act.className = "btn"; }
     else { act.textContent = "すべて削除"; act.className = "btn danger"; act.hidden = !S().user || !S().history.length; }
+    act.title = act.textContent;
+    act.setAttribute("aria-label", act.textContent);
     renderList();
   }
 
@@ -380,7 +393,7 @@ const MirageUI = (() => {
         </section>
         <section>
           <h3>ページフィルター</h3>
-          <p class="note">横から覗かれても読みにくくするフィルターです。Alt+P ですばやく切り替えられます。物理的なプライバシーフィルムのように視野角で見えなくなるものではなく、見づらくすることで内容を隠します。</p>
+          <p class="note">横から覗かれても読みにくくするフィルターです。Alt+Z ですばやく切り替えられます。物理的なプライバシーフィルムのように視野角で見えなくなるものではなく、見づらくすることで内容を隠します。</p>
           <div class="grid">${FILTERS.map((f) => `<button class="card" data-filter="${f.id}"><span class="fl"><span class="fl-ov" data-prev="${f.id}"></span></span><span>${f.name}</span></button>`).join("")}</div>
           <label class="field"><span>強さ <b id="f-val"></b></span><input id="f-range" type="range" min="10" max="100" step="5"></label>
           <div class="fprev"><p>これはフィルターの見え方を確かめるサンプル文です。0123456789</p><p>フィルター越しのページのプレビューです。</p><div class="fprev-ov" id="fprev"></div></div>
@@ -565,6 +578,16 @@ const MirageUI = (() => {
   // ---------- init ----------
   function init() {
     buildSidebar();
+    renderBookmarkBar();
+    const bookmarkBar = $("#bookmark-bar");
+    bookmarkBar.addEventListener("click", (e) => {
+      const item = e.target.closest("[data-bookmark-url]");
+      if (item) openItem(item.dataset.bookmarkUrl, e.ctrlKey || e.metaKey);
+    });
+    bookmarkBar.addEventListener("auxclick", (e) => {
+      const item = e.target.closest("[data-bookmark-url]");
+      if (item && e.button === 1) { e.preventDefault(); openItem(item.dataset.bookmarkUrl, true); }
+    });
     applyTheme(); applyFilter(); refreshAvatarBtn();
     initTabLock();
 
@@ -584,7 +607,7 @@ const MirageUI = (() => {
       renderSidebar();
       if (!sb().hidden && panel === "history") MirageData.loadHistory();
     });
-    MirageData.on("bookmarks", renderSidebar);
+    MirageData.on("bookmarks", () => { renderSidebar(); renderBookmarkBar(); });
     MirageData.on("history", renderSidebar);
   }
 
