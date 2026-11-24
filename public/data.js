@@ -5,7 +5,7 @@ const MirageData = (() => {
   const enabled = !!(cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase);
   const sb = enabled
     ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
       })
     : null;
 
@@ -79,7 +79,7 @@ const MirageData = (() => {
 
   // ---------- auth ----------
   async function signUp(email, password, username) {
-    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { username } } });
+    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: location.origin } });
     if (error) throw error;
     return { needsConfirm: !data.session };
   }
