@@ -374,7 +374,8 @@ const MirageUI = (() => {
   function wireSettings() {
     const d = dlgSet();
     d.addEventListener("click", (e) => {
-      const t = e.target.closest("[data-theme]"), a = e.target.closest("[data-accent]"), f = e.target.closest("[data-filter]");
+      // Match buttons only: <html> itself carries data-theme / data-accent attributes.
+      const t = e.target.closest("button[data-theme]"), a = e.target.closest("button[data-accent]"), f = e.target.closest("button[data-filter]");
       if (t) MirageData.setSettings({ theme: t.dataset.theme });
       else if (a) MirageData.setSettings({ accent: a.dataset.accent });
       else if (f) MirageData.setSettings({ filter: { type: f.dataset.filter } });
