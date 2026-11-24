@@ -40,11 +40,11 @@ if(s.tab){if(s.tab.title)document.title=s.tab.title;if(s.tab.icon){var l=documen
 </svg>
 
 <div id="app">
+  <div id="browser">
   <div id="tabstrip">
     <div id="tabs"></div>
     <button id="newtab" class="icon-btn small" title="New tab" aria-label="New tab"><svg><use href="#i-plus"/></svg></button>
   </div>
-  <nav id="bookmark-bar" aria-label="ブックマークバー"></nav>
   <div id="toolbar">
     <button id="back" class="icon-btn" title="Back" aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <button id="forward" class="icon-btn" title="Forward" aria-label="Forward"><svg><use href="#i-forward"/></svg></button>
@@ -74,9 +74,10 @@ if(s.tab){if(s.tab.title)document.title=s.tab.title;if(s.tab.icon){var l=documen
     <button id="fullscreen-exit" type="button" title="全画面を終了" aria-label="全画面を終了"><svg><use href="#i-exit-fullscreen"/></svg></button>
     <div id="privacy-filter" hidden></div>
   </div>
-  <aside id="sidebar" hidden></aside>
   </div>
   <div id="status" hidden></div>
+  </div>
+  <aside id="sidebar" hidden></aside>
 </div>
 
 <div id="tab-lock" class="tab-lock" hidden role="dialog" aria-modal="true" aria-labelledby="tab-lock-title">
@@ -100,6 +101,7 @@ if(s.tab){if(s.tab.title)document.title=s.tab.title;if(s.tab.icon){var l=documen
 <script src="/supabase/supabase.js"></script>
 <script src="/baremux/index.js"></script>
 <script src="/data.js"></script>
+<script src="/lock.js"></script>
 <script src="/ui.js"></script>
 <script src="/app.js"></script>
 </body>
