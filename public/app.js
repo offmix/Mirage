@@ -1,5 +1,20 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
+
+// Fallbacks so browsing still works if data.js / ui.js failed to load (for example, not pushed to the repo).
+const missingModules = [];
+if (typeof MirageData === "undefined") {
+  missingModules.push("data.js");
+  globalThis.MirageData = {
+    enabled: false, state: { user: null, profile: null, settings: {}, bookmarks: [], history: [] },
+    on() {}, init: () => Promise.resolve(), isBookmarked: () => false, findBookmark: () => null,
+    addBookmark: async () => {}, removeBookmark: async () => {}, addHistory: async () => {},
+  };
+}
+if (typeof MirageUI === "undefined") {
+  missingModules.push("ui.js");
+  globalThis.MirageUI = { init() {}, toggleFilter() {} };
+}
 const SEARCH = "https://www.google.com/search?q=%s";
 const SHORTCUTS = [
   { name: "DuckDuckGo", url: "https://duckduckgo.com/" },
@@ -37,7 +52,14 @@ function recordHistory(tab) {
 
 function setStatus(msg, isError) {
   const el = $("#status");
-  if (!msg) { el.hidden = true; return; }
+  if (!msg) {
+    if (missingModules.length) {
+      el.textContent = "Missing files: public/" + missingModules.join(", public/") + " (add them to the repo and redeploy)";
+      el.style.color = "#d93025"; el.hidden = false;
+      return;
+    }
+    el.hidden = true; return;
+  }
   el.textContent = msg;
   el.style.color = isError ? "#d93025" : "";
   el.hidden = false;
