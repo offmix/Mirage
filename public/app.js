@@ -38,6 +38,7 @@ function toRealUrl(u) {
 // Keyboard shortcuts. Used on the Mirage page and also inside every proxied page,
 // because key events in an iframe do not reach the parent document.
 function onShortcut(e) {
+  if (document.body.classList.contains("tab-locked")) return;
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key === "t") { e.preventDefault(); newTab(); }
   else if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
