@@ -183,17 +183,6 @@ const MirageUI = (() => {
     $("#sb-q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); renderList(); });
   }
 
-  function renderBookmarkBar() {
-    const bar = $("#bookmark-bar");
-    if (!bar) return;
-    const items = S().bookmarks || [];
-    bar.innerHTML = items.length
-      ? items.map((b) => {
-          const title = b.title || b.url;
-          return '<button class="bookmark-bar-item" type="button" data-bookmark-url="' + esc(b.url) + '" title="' + esc(title) + '">' + ic("i-bookmark") + '<span class="bookmark-bar-title">' + esc(title) + '</span></button>';
-        }).join("")
-      : '<span class="bookmark-bar-empty">ブックマークを追加するとここに表示されます</span>';
-  }
   function openItem(url, newTab) {
     if (newTab) window.MirageApp.newTab(url); else window.MirageApp.navigate(url);
   }
@@ -578,16 +567,6 @@ const MirageUI = (() => {
   // ---------- init ----------
   function init() {
     buildSidebar();
-    renderBookmarkBar();
-    const bookmarkBar = $("#bookmark-bar");
-    bookmarkBar.addEventListener("click", (e) => {
-      const item = e.target.closest("[data-bookmark-url]");
-      if (item) openItem(item.dataset.bookmarkUrl, e.ctrlKey || e.metaKey);
-    });
-    bookmarkBar.addEventListener("auxclick", (e) => {
-      const item = e.target.closest("[data-bookmark-url]");
-      if (item && e.button === 1) { e.preventDefault(); openItem(item.dataset.bookmarkUrl, true); }
-    });
     applyTheme(); applyFilter(); refreshAvatarBtn();
     initTabLock();
 
@@ -607,7 +586,7 @@ const MirageUI = (() => {
       renderSidebar();
       if (!sb().hidden && panel === "history") MirageData.loadHistory();
     });
-    MirageData.on("bookmarks", () => { renderSidebar(); renderBookmarkBar(); });
+    MirageData.on("bookmarks", renderSidebar);
     MirageData.on("history", renderSidebar);
   }
 
