@@ -35,6 +35,27 @@ function toRealUrl(u) {
   return s;
 }
 
+// Keyboard shortcuts. Used on the Mirage page and also inside every proxied page,
+// because key events in an iframe do not reach the parent document.
+function onShortcut(e) {
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key === "t") { e.preventDefault(); newTab(); }
+  else if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
+  else if (mod && e.key === "l") { e.preventDefault(); $("#address").focus(); }
+  else if (e.altKey && e.code === "KeyP") { e.preventDefault(); e.stopPropagation(); MirageUI.toggleFilter(); }
+}
+
+const keyDocs = new WeakSet();
+const nativeAddListener = EventTarget.prototype.addEventListener; // parent realm's own function (not Scramjet's patched one)
+function attachKeys(tab) {
+  try {
+    const doc = tab.iframe.contentDocument;
+    if (!doc || keyDocs.has(doc)) return;
+    nativeAddListener.call(doc, "keydown", onShortcut, true);
+    keyDocs.add(doc);
+  } catch {}
+}
+
 function updateStar() {
   const t = current();
   const on = !!(t && t.url && MirageData.isBookmarked(t.url));
@@ -190,8 +211,9 @@ function newTab(url) {
   iframe.addEventListener("load", () => {
     clearTimeout(tab.loadTimer);
     if (tab.id === activeId) setStatus("");
+    attachKeys(tab);
     syncTab(tab);
-    setTimeout(() => { syncTab(tab); recordHistory(tab); }, 800);
+    setTimeout(() => { attachKeys(tab); syncTab(tab); recordHistory(tab); }, 800);
   });
   activate(id);
   if (url) navigate(url);
@@ -274,6 +296,7 @@ function setTitle(t, title) {
 }
 
 function syncTab(tab) {
+  attachKeys(tab);
   if (!tab.url) return;
   try {
     const doc = tab.iframe.contentDocument;
@@ -318,13 +341,7 @@ function bindUI() {
     } catch (e) { showError(e.message); }
   };
   $("#ntp-form").addEventListener("submit", (e) => { e.preventDefault(); navigate($("#ntp-input").value); });
-  document.addEventListener("keydown", (e) => {
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key === "t") { e.preventDefault(); newTab(); }
-    if (mod && e.key === "w") { e.preventDefault(); closeTab(activeId); }
-    if (mod && e.key === "l") { e.preventDefault(); $("#address").focus(); }
-    if (e.altKey && (e.key === "p" || e.key === "P")) { e.preventDefault(); MirageUI.toggleFilter(); }
-  });
+  document.addEventListener("keydown", onShortcut);
 }
 
 // An older Scramjet build may have left an IndexedDB with a different schema.
