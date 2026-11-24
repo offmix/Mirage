@@ -69,6 +69,29 @@ const MirageUI = (() => {
 
   // ---------- theme ----------
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  // ---------- tab title and icon (Mirage itself, not the proxied site) ----------
+  const DEFAULT_TITLE = "Mirage";
+  const DEFAULT_ICON = "data:image/svg+xml," + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><circle cx='24' cy='24' r='20' fill='none' stroke='#8b5cf6' stroke-width='4'/><path d='M8 28q8-8 16 0t16 0' fill='none' stroke='#8b5cf6' stroke-width='4' stroke-linecap='round'/></svg>"
+  );
+  const TAB_TEMPLATES = [
+    { id: "classroom", name: "Classroom", title: "ホーム - Classroom", icon: "https://icon-class-1.edgeone.dev/file.png" },
+    { id: "default", name: "デフォルト", title: "", icon: "" },
+  ];
+  const validIconUrl = (u) => /^https?:\/\//i.test(u) || /^data:image\//i.test(u);
+
+  function applyTab() {
+    const t = S().settings.tab || {};
+    document.title = t.title || DEFAULT_TITLE;
+    const href = t.icon || DEFAULT_ICON;
+    const old = document.getElementById("mirage-icon");
+    if (old && old.getAttribute("href") === href) return;
+    if (old) old.remove();
+    const link = document.createElement("link"); // re-created so the browser reloads the icon
+    link.id = "mirage-icon"; link.rel = "icon"; link.href = href;
+    document.head.appendChild(link);
+  }
+
   function applyTheme() {
     const s = S().settings;
     document.documentElement.dataset.theme = s.theme === "system" ? (mq.matches ? "dark" : "light") : s.theme;
@@ -183,6 +206,17 @@ const MirageUI = (() => {
     $("#sb-q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); renderList(); });
   }
 
+  function renderBookmarkBar() {
+    const bar = $("#bookmark-bar");
+    if (!bar) return;
+    const items = S().bookmarks || [];
+    bar.innerHTML = items.length
+      ? items.map((b) => {
+          const title = b.title || b.url;
+          return '<button class="bookmark-bar-item" type="button" data-bookmark-url="' + esc(b.url) + '" title="' + esc(title) + '">' + ic("i-bookmark") + '<span class="bookmark-bar-title">' + esc(title) + '</span></button>';
+        }).join("")
+      : '<span class="bookmark-bar-empty">ブックマークを追加するとここに表示されます</span>';
+  }
   function openItem(url, newTab) {
     if (newTab) window.MirageApp.newTab(url); else window.MirageApp.navigate(url);
   }
@@ -388,6 +422,15 @@ const MirageUI = (() => {
           <div class="fprev"><p>これはフィルターの見え方を確かめるサンプル文です。0123456789</p><p>フィルター越しのページのプレビューです。</p><div class="fprev-ov" id="fprev"></div></div>
         </section>
         <section>
+          <h3>タブの表示</h3>
+          <p class="note">ブラウザのタブに表示される、Mirage 自体のタイトルとアイコンを変更します。開いているサイトのタイトルやアイコンには影響しません。</p>
+          <div class="grid">${TAB_TEMPLATES.map((t) => `<button class="card" data-tabtpl="${t.id}"><span class="tpl-title">${esc(t.title || DEFAULT_TITLE)}</span><span>${esc(t.name)}</span></button>`).join("")}</div>
+          <label class="field"><span>タイトル</span><input type="text" id="tb-title" maxlength="100" placeholder="${DEFAULT_TITLE}"></label>
+          <label class="field"><span>アイコンのURL</span><input type="text" id="tb-icon" placeholder="https://example.com/icon.png" autocomplete="off"></label>
+          <div class="msg" id="tb-msg" role="status"></div>
+          <div class="row-btns"><button class="btn primary" id="tb-apply">適用</button><button class="btn" id="tb-reset">デフォルトに戻す</button></div>
+        </section>
+        <section>
           <h3>タブを離れたときのロック</h3>
           <p class="note">パスワードを設定すると、別のタブへ移動したときに画面をぼかしてロックします。設定はこのブラウザ内に保存されます。サーバー側の認証や、開発者ツールを使った操作を防ぐ機能ではありません。</p>
           <label class="field"><span>ロック用パスワード（3文字以上）</span><input id="tab-lock-new-password" type="password" minlength="3" autocomplete="new-password" placeholder="3文字以上"></label>
@@ -425,6 +468,14 @@ const MirageUI = (() => {
     if (r && document.activeElement !== r) r.value = s.filter.strength;
     d.querySelector("#f-val").textContent = s.filter.strength + "%";
     paint(d.querySelector("#fprev"), s.filter.type === "off" ? null : filterStyle(s.filter.type, s.filter.strength));
+    const tb = s.tab || { title: "", icon: "" };
+    const ti = d.querySelector("#tb-title"), ii = d.querySelector("#tb-icon");
+    if (ti && document.activeElement !== ti) ti.value = tb.title || "";
+    if (ii && document.activeElement !== ii) ii.value = tb.icon || "";
+    d.querySelectorAll("[data-tabtpl]").forEach((b) => {
+      const t = TAB_TEMPLATES.find((x) => x.id === b.dataset.tabtpl);
+      b.classList.toggle("sel", !!t && t.title === (tb.title || "") && t.icon === (tb.icon || ""));
+    });
     const lock = getTabLock();
     const enabled = d.querySelector("#tab-lock-enabled");
     const save = d.querySelector("#tab-lock-save");
@@ -435,6 +486,27 @@ const MirageUI = (() => {
   }
 
   function openSettings() { renderSettings(); dlgSet().showModal(); syncSettingsDialog(); }
+
+  function wireTab() {
+    const d = dlgSet();
+    const msg = (t, k) => { const m = d.querySelector("#tb-msg"); if (m) { m.textContent = t || ""; m.className = "msg " + (k || ""); } };
+    d.addEventListener("click", (e) => {
+      const tpl = e.target.closest("button[data-tabtpl]");
+      if (tpl) {
+        const t = TAB_TEMPLATES.find((x) => x.id === tpl.dataset.tabtpl);
+        if (t) { MirageData.setSettings({ tab: { title: t.title, icon: t.icon } }); msg("適用しました。", "ok"); }
+      } else if (e.target.closest("#tb-apply")) {
+        const title = d.querySelector("#tb-title").value.trim().slice(0, 100);
+        const icon = d.querySelector("#tb-icon").value.trim();
+        if (icon && !validIconUrl(icon)) return msg("アイコンのURLは、http(s):// から始まる画像のURLを入力してください。", "err");
+        MirageData.setSettings({ tab: { title, icon } });
+        msg("適用しました。", "ok");
+      } else if (e.target.closest("#tb-reset")) {
+        MirageData.setSettings({ tab: { title: "", icon: "" } });
+        msg("デフォルトに戻しました。", "ok");
+      }
+    });
+  }
 
   function wireSettings() {
     const d = dlgSet();
@@ -567,7 +639,17 @@ const MirageUI = (() => {
   // ---------- init ----------
   function init() {
     buildSidebar();
-    applyTheme(); applyFilter(); refreshAvatarBtn();
+    renderBookmarkBar();
+    const bookmarkBar = $("#bookmark-bar");
+    bookmarkBar.addEventListener("click", (e) => {
+      const item = e.target.closest("[data-bookmark-url]");
+      if (item) openItem(item.dataset.bookmarkUrl, e.ctrlKey || e.metaKey);
+    });
+    bookmarkBar.addEventListener("auxclick", (e) => {
+      const item = e.target.closest("[data-bookmark-url]");
+      if (item && e.button === 1) { e.preventDefault(); openItem(item.dataset.bookmarkUrl, true); }
+    });
+    applyTheme(); applyFilter(); applyTab(); refreshAvatarBtn();
     initTabLock();
 
     $("#btn-sidebar").onclick = toggleSidebar;
@@ -577,8 +659,9 @@ const MirageUI = (() => {
       d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-close]")) d.close(); });
     }
     wireSettings();
+    wireTab();
 
-    MirageData.on("settings", () => { applyTheme(); applyFilter(); syncSettingsDialog(); });
+    MirageData.on("settings", () => { applyTheme(); applyFilter(); applyTab(); syncSettingsDialog(); });
     MirageData.on("auth", () => {
       refreshAvatarBtn();
       if (dlgAcc().open) renderAccount();
@@ -586,7 +669,7 @@ const MirageUI = (() => {
       renderSidebar();
       if (!sb().hidden && panel === "history") MirageData.loadHistory();
     });
-    MirageData.on("bookmarks", renderSidebar);
+    MirageData.on("bookmarks", () => { renderSidebar(); renderBookmarkBar(); });
     MirageData.on("history", renderSidebar);
   }
 
