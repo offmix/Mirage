@@ -7,19 +7,19 @@ const MirageUI = (() => {
   const S = () => MirageData.state;
 
   const THEMES = [
-    { id: "system", name: "System", bg: "linear-gradient(135deg,#fff 50%,#202124 50%)" },
-    { id: "light", name: "Light", bg: "#ffffff" },
-    { id: "dark", name: "Dark", bg: "#35363a" },
-    { id: "midnight", name: "Midnight", bg: "#141b34" },
-    { id: "forest", name: "Forest", bg: "#24382d" },
-    { id: "sakura", name: "Sakura", bg: "#fff7fa" },
+    { id: "system", name: "システム", bg: "linear-gradient(135deg,#fff 50%,#202124 50%)" },
+    { id: "light", name: "ライト", bg: "#ffffff" },
+    { id: "dark", name: "ダーク", bg: "#35363a" },
+    { id: "midnight", name: "ミッドナイト", bg: "#141b34" },
+    { id: "forest", name: "フォレスト", bg: "#24382d" },
+    { id: "sakura", name: "サクラ", bg: "#fff7fa" },
   ];
   const ACCENTS = { blue: "#4285f4", purple: "#8b5cf6", green: "#1e9e5a", red: "#e5484d", orange: "#f08c00", pink: "#e5467f" };
   const FILTERS = [
-    { id: "off", name: "Off" }, { id: "dim", name: "Dim" }, { id: "fog", name: "Fog" },
-    { id: "mono", name: "Low contrast" }, { id: "hlines", name: "Horizontal lines" },
-    { id: "vlines", name: "Vertical blinds" }, { id: "mesh", name: "Mesh" },
-    { id: "dots", name: "Dots" }, { id: "diag", name: "Diagonal" }, { id: "noise", name: "Noise" },
+    { id: "off", name: "オフ" }, { id: "dim", name: "暗くする" }, { id: "fog", name: "霧" },
+    { id: "mono", name: "低コントラスト" }, { id: "hlines", name: "横線" },
+    { id: "vlines", name: "縦線(ブラインド)" }, { id: "mesh", name: "格子" },
+    { id: "dots", name: "ドット" }, { id: "diag", name: "斜線" }, { id: "noise", name: "ノイズ" },
   ];
 
   // ---------- theme ----------
@@ -100,13 +100,13 @@ const MirageUI = (() => {
     sb().innerHTML = `
       <div class="sb-head">
         <div class="sb-tabs">
-          <button data-panel="bookmarks">Bookmarks</button>
-          <button data-panel="history">History</button>
+          <button data-panel="bookmarks">ブックマーク</button>
+          <button data-panel="history">履歴</button>
         </div>
-        <button class="icon-btn small" data-sb-close title="Close" aria-label="Close">${ic("i-close")}</button>
+        <button class="icon-btn small" data-sb-close title="閉じる" aria-label="閉じる">${ic("i-close")}</button>
       </div>
       <div class="sb-tools">
-        <div class="sb-search">${ic("i-search")}<input id="sb-q" type="text" placeholder="Search" autocomplete="off"></div>
+        <div class="sb-search">${ic("i-search")}<input id="sb-q" type="text" placeholder="検索" autocomplete="off"></div>
         <button class="btn" id="sb-action"></button>
       </div>
       <div class="sb-list" id="sb-list"></div>`;
@@ -147,7 +147,7 @@ const MirageUI = (() => {
       if (panel === "bookmarks") {
         const t = window.MirageApp.current();
         if (t && t.url) await MirageData.addBookmark({ title: t.title, url: t.url });
-      } else if (S().user && confirm("Delete all browsing history?")) {
+      } else if (S().user && confirm("閲覧履歴をすべて削除しますか?")) {
         await MirageData.clearHistory();
       }
     } catch (err) { alert(err.message); }
@@ -171,12 +171,12 @@ const MirageUI = (() => {
       <span class="ico">${ic("i-globe")}</span>
       <div class="meta"><div class="t">${esc(it.title || it.url)}</div><div class="u">${esc(shortUrl(it.url))}</div></div>
       ${time ? `<span class="tm">${esc(time)}</span>` : ""}
-      <button class="del" data-del title="Delete" aria-label="Delete">${ic("i-trash")}</button></div>`;
+      <button class="del" data-del title="削除" aria-label="削除">${ic("i-trash")}</button></div>`;
   }
   function dayLabel(iso) {
     const d = new Date(iso), same = (a, b) => a.toDateString() === b.toDateString();
-    if (same(d, new Date())) return "Today";
-    if (same(d, new Date(Date.now() - 864e5))) return "Yesterday";
+    if (same(d, new Date())) return "今日";
+    if (same(d, new Date(Date.now() - 864e5))) return "昨日";
     return d.toLocaleDateString();
   }
 
@@ -185,8 +185,8 @@ const MirageUI = (() => {
     for (const b of sb().querySelectorAll("[data-panel]")) b.classList.toggle("active", b.dataset.panel === panel);
     const act = $("#sb-action");
     act.hidden = false;
-    if (panel === "bookmarks") { act.textContent = "Add page"; act.className = "btn"; }
-    else { act.textContent = "Clear all"; act.className = "btn danger"; act.hidden = !S().user || !S().history.length; }
+    if (panel === "bookmarks") { act.textContent = "このページを追加"; act.className = "btn"; }
+    else { act.textContent = "すべて削除"; act.className = "btn danger"; act.hidden = !S().user || !S().history.length; }
     renderList();
   }
 
@@ -197,13 +197,13 @@ const MirageUI = (() => {
     if (panel === "bookmarks") {
       const items = S().bookmarks.filter(match);
       list.innerHTML = items.length ? items.map((b) => itemHtml(b)).join("")
-        : `<div class="empty">${query ? "No matches." : "No bookmarks yet.<br>Press the star in the address bar to add one."}</div>`;
+        : `<div class="empty">${query ? "一致する項目がありません。" : "ブックマークはまだありません。<br>アドレスバーの星ボタンで追加できます。"}</div>`;
       return;
     }
-    if (!MirageData.enabled) { list.innerHTML = `<div class="empty">Accounts are not configured on this server, so history is unavailable.</div>`; return; }
-    if (!S().user) { list.innerHTML = `<div class="empty">Sign in to save and browse your history.<br><button class="btn primary" id="sb-signin">Sign in</button></div>`; return; }
+    if (!MirageData.enabled) { list.innerHTML = `<div class="empty">このサーバーではアカウント機能が設定されていないため、履歴は使えません。</div>`; return; }
+    if (!S().user) { list.innerHTML = `<div class="empty">サインインすると履歴を保存・閲覧できます。<br><button class="btn primary" id="sb-signin">サインイン</button></div>`; return; }
     const items = S().history.filter(match);
-    if (!items.length) { list.innerHTML = `<div class="empty">${query ? "No matches." : "No history yet."}</div>`; return; }
+    if (!items.length) { list.innerHTML = `<div class="empty">${query ? "一致する項目がありません。" : "履歴はまだありません。"}</div>`; return; }
     let last = "", html = "";
     for (const h of items) {
       const lab = dayLabel(h.visited_at);
@@ -211,6 +211,19 @@ const MirageUI = (() => {
       html += itemHtml(h, new Date(h.visited_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     }
     list.innerHTML = html;
+  }
+
+  // Translate common Supabase auth errors.
+  function jaError(m) {
+    m = String(m || "");
+    if (/Invalid login credentials/i.test(m)) return "メールアドレスかパスワードが正しくありません。";
+    if (/already registered|already been registered/i.test(m)) return "このメールアドレスは既に登録されています。";
+    if (/Password should be at least|weak password/i.test(m)) return "パスワードは6文字以上にしてください。";
+    if (/Email not confirmed/i.test(m)) return "メールアドレスの確認が完了していません。確認メールのリンクを開いてください。";
+    if (/rate limit|too many/i.test(m)) return "リクエストが多すぎます。しばらくしてからもう一度お試しください。";
+    if (/invalid.*email|Unable to validate email/i.test(m)) return "メールアドレスの形式が正しくありません。";
+    if (/Failed to fetch|NetworkError/i.test(m)) return "通信に失敗しました。ネットワークを確認してください。";
+    return m;
   }
 
   // ---------- account ----------
@@ -225,7 +238,7 @@ const MirageUI = (() => {
     slot.innerHTML = avatarHtml(p && p.avatar_url);
     const img = slot.querySelector("img");
     if (img) img.addEventListener("error", () => { slot.innerHTML = ic("i-person"); });
-    $("#btn-account").title = S().user ? (p && p.username) || "Account" : "Sign in";
+    $("#btn-account").title = S().user ? (p && p.username) || "アカウント" : "サインイン";
   }
 
   function openAccount() { renderAccount(); if (!dlgAcc().open) dlgAcc().showModal(); }
@@ -234,32 +247,32 @@ const MirageUI = (() => {
     const d = dlgAcc(), st = S();
     let body;
     if (!MirageData.enabled) {
-      body = `<p class="note">Accounts are not configured on this server. Set the SUPABASE_URL and SUPABASE_ANON_KEY environment variables. Bookmarks and settings are still saved in this browser.</p>`;
+      body = `<p class="note">このサーバーではアカウント機能が設定されていません。環境変数 SUPABASE_URL と公開キー(SUPABASE_PUBLISHABLE_KEY または SUPABASE_ANON_KEY)を設定してください。ブックマークと設定はこのブラウザに保存されます。</p>`;
     } else if (!st.user) {
       const up = accMode === "signup";
       body = `
-        <div class="seg"><button data-mode="signin" class="${up ? "" : "active"}">Sign in</button><button data-mode="signup" class="${up ? "active" : ""}">Sign up</button></div>
+        <div class="seg"><button data-mode="signin" class="${up ? "" : "active"}">サインイン</button><button data-mode="signup" class="${up ? "active" : ""}">新規登録</button></div>
         <form id="acc-form">
-          ${up ? `<label class="field"><span>Username</span><input type="text" name="username" required minlength="2" maxlength="20" autocomplete="username"></label>` : ""}
-          <label class="field"><span>Email</span><input type="email" name="email" required autocomplete="email"></label>
-          <label class="field"><span>Password</span><input type="password" name="password" required minlength="6" autocomplete="${up ? "new-password" : "current-password"}"></label>
+          ${up ? `<label class="field"><span>ユーザーネーム</span><input type="text" name="username" required minlength="2" maxlength="20" autocomplete="username"></label>` : ""}
+          <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="email"></label>
+          <label class="field"><span>パスワード</span><input type="password" name="password" required minlength="6" autocomplete="${up ? "new-password" : "current-password"}"></label>
           <div class="msg" id="acc-msg" role="status"></div>
-          <button class="btn primary" type="submit">${up ? "Create account" : "Sign in"}</button>
+          <button class="btn primary" type="submit">${up ? "アカウントを作成" : "サインイン"}</button>
         </form>
-        <p class="note">Bookmarks saved before you sign in are added to your account. History is saved only while signed in.</p>`;
+        <p class="note">サインイン前に保存したブックマークは、アカウントに追加されます。履歴はサインイン中のみ保存されます。</p>`;
     } else {
       const p = st.profile || {};
       body = `
         <div class="acc-top">
           <div class="acc-avatar">${avatarHtml(p.avatar_url)}</div>
-          <div><button class="btn" id="acc-photo">Change photo</button><input type="file" id="acc-file" accept="image/*" hidden></div>
+          <div><button class="btn" id="acc-photo">画像を変更</button><input type="file" id="acc-file" accept="image/*" hidden></div>
         </div>
-        <div class="field"><span>Username</span><div class="row"><input type="text" id="acc-name" value="${esc(p.username || "")}" minlength="2" maxlength="20"><button class="btn primary" id="acc-save">Save</button></div></div>
-        <div class="field"><span>Email</span><div class="static">${esc(st.user.email || "")}</div></div>
+        <div class="field"><span>ユーザーネーム</span><div class="row"><input type="text" id="acc-name" value="${esc(p.username || "")}" minlength="2" maxlength="20"><button class="btn primary" id="acc-save">保存</button></div></div>
+        <div class="field"><span>メールアドレス</span><div class="static">${esc(st.user.email || "")}</div></div>
         <div class="msg" id="acc-msg" role="status"></div>
-        <button class="btn danger" id="acc-out">Sign out</button>`;
+        <button class="btn danger" id="acc-out">サインアウト</button>`;
     }
-    d.innerHTML = `<div class="dlg-head"><h2>Account</h2><button class="icon-btn small" data-close aria-label="Close">${ic("i-close")}</button></div><div class="dlg-body">${body}</div>`;
+    d.innerHTML = `<div class="dlg-head"><h2>アカウント</h2><button class="icon-btn small" data-close aria-label="閉じる">${ic("i-close")}</button></div><div class="dlg-body">${body}</div>`;
     const img = d.querySelector(".acc-avatar img");
     if (img) img.addEventListener("error", () => { img.parentElement.innerHTML = ic("i-person"); });
     wireAccount(d);
@@ -277,11 +290,11 @@ const MirageUI = (() => {
       try {
         if (accMode === "signup") {
           const r = await MirageData.signUp(fd.get("email"), fd.get("password"), String(fd.get("username") || "").trim());
-          if (r.needsConfirm) msg("Check your email to confirm your account, then sign in.", "ok");
+          if (r.needsConfirm) msg("確認メールを送信しました。メール内のリンクを開いてからサインインしてください。", "ok");
         } else {
           await MirageData.signIn(fd.get("email"), fd.get("password"));
         }
-      } catch (err) { msg(err.message, "err"); }
+      } catch (err) { msg(jaError(err.message), "err"); }
       btn.disabled = false;
     });
 
@@ -290,16 +303,16 @@ const MirageUI = (() => {
       photo.addEventListener("click", () => file.click());
       file.addEventListener("change", async () => {
         if (!file.files[0]) return;
-        msg("Uploading...");
+        msg("アップロード中...");
         try { await MirageData.uploadAvatar(file.files[0]); }
-        catch (err) { msg(err.message, "err"); }
+        catch (err) { msg(jaError(err.message), "err"); }
       });
     }
     const save = d.querySelector("#acc-save");
     if (save) save.addEventListener("click", async () => {
       save.disabled = true; msg("");
-      try { await MirageData.updateUsername(d.querySelector("#acc-name").value); msg("Saved.", "ok"); }
-      catch (err) { msg(err.message, "err"); }
+      try { await MirageData.updateUsername(d.querySelector("#acc-name").value); msg("保存しました。", "ok"); }
+      catch (err) { msg(jaError(err.message), "err"); }
       save.disabled = false;
     });
     const out = d.querySelector("#acc-out");
@@ -312,24 +325,24 @@ const MirageUI = (() => {
   function renderSettings() {
     const d = dlgSet(), s = S().settings;
     d.innerHTML = `
-      <div class="dlg-head"><h2>Settings</h2><button class="icon-btn small" data-close aria-label="Close">${ic("i-close")}</button></div>
+      <div class="dlg-head"><h2>設定</h2><button class="icon-btn small" data-close aria-label="閉じる">${ic("i-close")}</button></div>
       <div class="dlg-body">
         <section>
-          <h3>Theme</h3>
+          <h3>テーマ</h3>
           <div class="grid">${THEMES.map((t) => `<button class="card" data-theme="${t.id}"><span class="sw" style="background:${t.bg}"></span><span>${t.name}</span></button>`).join("")}</div>
-          <h4>Accent color</h4>
+          <h4>アクセントカラー</h4>
           <div class="accents">${Object.entries(ACCENTS).map(([k, v]) => `<button class="dot" data-accent="${k}" style="background:${v}" title="${k}" aria-label="${k}"></button>`).join("")}</div>
         </section>
         <section>
-          <h3>Page filter</h3>
-          <p class="note">Makes the page harder to read for people looking over your shoulder. Toggle quickly with Alt+P. A software filter cannot depend on viewing angle like a physical privacy screen, so it works by reducing legibility.</p>
+          <h3>ページフィルター</h3>
+          <p class="note">横から覗かれても読みにくくするフィルターです。Alt+P ですばやく切り替えられます。物理的なプライバシーフィルムのように視野角で見えなくなるものではなく、見づらくすることで内容を隠します。</p>
           <div class="grid">${FILTERS.map((f) => `<button class="card" data-filter="${f.id}"><span class="fl"><span class="fl-ov" data-prev="${f.id}"></span></span><span>${f.name}</span></button>`).join("")}</div>
-          <label class="field"><span>Strength <b id="f-val"></b></span><input id="f-range" type="range" min="10" max="100" step="5"></label>
-          <div class="fprev"><p>The quick brown fox jumps over the lazy dog. 0123456789</p><p>Preview of the page behind the filter.</p><div class="fprev-ov" id="fprev"></div></div>
+          <label class="field"><span>強さ <b id="f-val"></b></span><input id="f-range" type="range" min="10" max="100" step="5"></label>
+          <div class="fprev"><p>これはフィルターの見え方を確かめるサンプル文です。0123456789</p><p>フィルター越しのページのプレビューです。</p><div class="fprev-ov" id="fprev"></div></div>
         </section>
         <section>
-          <h3>Sync</h3>
-          <p class="note">${S().user ? "Your settings are saved to your account." : MirageData.enabled ? "Settings are saved in this browser. Sign in to save them to your account." : "Settings are saved in this browser."}</p>
+          <h3>同期</h3>
+          <p class="note">${S().user ? "設定はアカウントに保存されます。" : MirageData.enabled ? "設定はこのブラウザに保存されます。サインインするとアカウントに保存されます。" : "設定はこのブラウザに保存されます。"}</p>
         </section>
       </div>`;
     // tiny previews inside each filter card
