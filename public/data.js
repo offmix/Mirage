@@ -92,11 +92,11 @@ const MirageData = (() => {
   // ---------- profile ----------
   async function updateUsername(name) {
     name = String(name || "").trim();
-    if (name.length < 2 || name.length > 20) throw new Error("Username must be 2 to 20 characters.");
+    if (name.length < 2 || name.length > 20) throw new Error("ユーザーネームは2〜20文字にしてください。");
     const { data, error } = await sb.from("profiles")
       .update({ username: name, updated_at: new Date().toISOString() })
       .eq("id", state.user.id).select().single();
-    if (error) throw new Error(error.code === "23505" ? "That username is already taken." : error.message);
+    if (error) throw new Error(error.code === "23505" ? "そのユーザーネームは既に使われています。" : error.message);
     state.profile = data;
     emit("auth");
   }
@@ -106,19 +106,19 @@ const MirageData = (() => {
     try {
       const img = await new Promise((res, rej) => {
         const i = new Image();
-        i.onload = () => res(i); i.onerror = () => rej(new Error("Could not read that image."));
+        i.onload = () => res(i); i.onerror = () => rej(new Error("画像を読み込めませんでした。"));
         i.src = url;
       });
       const c = document.createElement("canvas");
       c.width = c.height = size;
       const side = Math.min(img.width, img.height);
       c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
-      return await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("Could not process the image."))), "image/png"));
+      return await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("画像を処理できませんでした。"))), "image/png"));
     } finally { URL.revokeObjectURL(url); }
   }
 
   async function uploadAvatar(file) {
-    if (!file || !file.type.startsWith("image/")) throw new Error("Please choose an image file.");
+    if (!file || !file.type.startsWith("image/")) throw new Error("画像ファイルを選んでください。");
     const blob = await resizeToPng(file, 256);
     const path = state.user.id + "/avatar.png";
     const up = await sb.storage.from("avatars").upload(path, blob, { upsert: true, contentType: "image/png" });
