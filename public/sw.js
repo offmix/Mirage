@@ -5,6 +5,9 @@ for (const f of ["/scram/scramjet.all.js", "/scram/scramjet.worker.js"]) {
 }
 if (!loaded) throw new Error("No Scramjet worker bundle found under /scram/");
 
+// Ad blocker (beta) helpers: domain list and the on/off state saved by the page.
+try { importScripts("/adblock-shared.js"); } catch (e) { console.warn("[mirage] adblock-shared.js not loaded", e); }
+
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
 const scramjet = new ScramjetServiceWorker();
 
@@ -13,6 +16,43 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
 const PREFIX = "/service/";
+
+// ---------- ad blocker (beta) ----------
+let adblockCache = { t: 0, on: false };
+async function adblockOn() {
+  if (!self.MirageAdblockShared) return false;
+  if (Date.now() - adblockCache.t < 3000) return adblockCache.on;
+  let on = false;
+  try { const c = await MirageAdblockShared.kvGet("adblock"); on = !!(c && c.enabled); } catch {}
+  adblockCache = { t: Date.now(), on };
+  return on;
+}
+self.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "mirage:adblock-refresh") adblockCache.t = 0;
+});
+// "/service/<encoded real URL>" -> host name of the real URL ("" if it cannot be read)
+function targetHost(url) {
+  try {
+    const real = decodeURIComponent(new URL(url).pathname.slice(PREFIX.length));
+    if (/^https?:\/\//i.test(real)) return new URL(real).hostname;
+  } catch {}
+  return "";
+}
+const BLANK_GIF = Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"), (c) => c.charCodeAt(0));
+function blockedResponse(destination) {
+  const h = { "Cross-Origin-Resource-Policy": "same-origin", "Cache-Control": "no-store" };
+  switch (destination) {
+    case "script": return new Response("", { headers: { ...h, "Content-Type": "application/javascript" } });
+    case "style": return new Response("", { headers: { ...h, "Content-Type": "text/css" } });
+    case "image": return new Response(BLANK_GIF, { headers: { ...h, "Content-Type": "image/gif" } });
+    case "iframe": case "frame": case "document":
+      return new Response("<!doctype html><title></title>", { headers: { ...h, "Content-Type": "text/html; charset=utf-8", "Cross-Origin-Embedder-Policy": "require-corp" } });
+    default: return new Response(null, { status: 204, headers: h });
+  }
+}
+async function notifyBlocked(host) {
+  try { (await self.clients.matchAll({ type: "window" })).forEach((c) => c.postMessage({ type: "mirage:blocked", host })); } catch {}
+}
 
 // Scramjet 1.1 workaround: when the page's controller posts a "loadConfig" message,
 // the worker stores that config but never applies it, and loadConfig() returns early
@@ -48,6 +88,13 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       try {
+        if (await adblockOn()) {
+          const host = targetHost(event.request.url);
+          if (host && MirageAdblockShared.isAdHost(host)) {
+            notifyBlocked(host);
+            return blockedResponse(event.request.destination);
+          }
+        }
         await ensureConfig();
         if (scramjet.route(event)) return await scramjet.fetch(event);
         return await fetch(event.request);
