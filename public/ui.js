@@ -375,10 +375,21 @@ const MirageUI = (() => {
   // ---------- settings ----------
   const dlgSet = () => $("#sb-settings"); // settings now live in the sidebar
 
+  // Settings sections are collapsible so the panel is easy to scan; the open ones are remembered.
+  const openSecs = new Set(["テーマ"]);
+  function accordion(html) {
+    return html
+      .replace(/<section>\s*<h3>([\s\S]*?)<\/h3>/g, (m, title) => {
+        const key = title.replace(/<[^>]*>/g, "").trim();
+        return `<details class="set-sec" data-sec="${esc(key)}"${openSecs.has(key) ? " open" : ""}><summary>${title}</summary><div class="set-body">`;
+      })
+      .replace(/<\/section>/g, "</div></details>");
+  }
+
   function renderSettings() {
     const d = dlgSet(), s = S().settings;
     d.dataset.ready = "1";
-    d.innerHTML = `
+    d.innerHTML = accordion(`
         <section>
           <h3>テーマ</h3>
           <div class="grid">${THEMES.map((t) => `<button class="card" data-theme="${t.id}"><span class="sw" style="background:${t.bg}"></span><span>${t.name}</span></button>`).join("")}</div>
@@ -403,11 +414,12 @@ const MirageUI = (() => {
           <div class="msg" id="tb-msg" role="status"></div>
           <div class="row-btns"><button class="btn primary" id="tb-apply">適用</button><button class="btn" id="tb-reset">デフォルトに戻す</button></div>
         </section>
+        ${MirageAdblock.settingsHtml()}
         ${MirageLock.settingsHtml()}
         <section>
           <h3>同期</h3>
           <p class="note">${S().user ? "設定はアカウントに保存されます。" : MirageData.enabled ? "設定はこのブラウザに保存されます。サインインするとアカウントに保存されます。" : "設定はこのブラウザに保存されます。"}</p>
-        </section>`;
+        </section>`);
     // tiny previews inside each filter card
     d.querySelectorAll("[data-prev]").forEach((el) => {
       el.style.cssText = "position:absolute;inset:0;";
@@ -443,6 +455,7 @@ const MirageUI = (() => {
       b.classList.toggle("sel", !!c && c.url === (tb.icon || ""));
     });
     MirageLock.syncSettings(d);
+    MirageAdblock.syncSettings(d);
   }
 
   function openSettings() { if (settingsOpen()) closeSidebar(); else openSidebar("settings"); }
@@ -480,6 +493,11 @@ const MirageUI = (() => {
 
   function wireSettings() {
     const d = dlgSet();
+    d.addEventListener("toggle", (e) => {
+      const det = e.target;
+      if (!det.matches || !det.matches("details.set-sec")) return;
+      if (det.open) openSecs.add(det.dataset.sec); else openSecs.delete(det.dataset.sec);
+    }, true);
     d.addEventListener("click", (e) => {
       // Match buttons only: <html> itself carries data-theme / data-accent attributes.
       const t = e.target.closest("button[data-theme]"), a = e.target.closest("button[data-accent]"), f = e.target.closest("button[data-filter]");
@@ -506,6 +524,8 @@ const MirageUI = (() => {
     }
     wireSettings();
     MirageLock.wireSettings(dlgSet(), () => syncSettingsDialog());
+    MirageAdblock.wireSettings(dlgSet());
+    MirageAdblock.init();
     wireTab();
 
     MirageData.on("settings", () => { applyTheme(); applyFilter(); applyTab(); syncSettingsDialog(); });
