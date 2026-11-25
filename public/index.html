@@ -30,6 +30,7 @@ if(s.tab){if(s.tab.title)document.title=s.tab.title;if(s.tab.icon){var l=documen
     <symbol id="i-globe" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm6.93 6h-2.95a15.65 15.65 0 00-1.38-3.56A8.03 8.03 0 0118.93 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14a8.2 8.2 0 010-4h3.38a16.5 16.5 0 000 4zm.81 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 015.07 16zm2.95-8H5.07a7.99 7.99 0 014.33-3.56A15.65 15.65 0 008.02 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66a14.7 14.7 0 010-4h4.68a14.7 14.7 0 010 4zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 01-4.33 3.56zM16.36 14a16.5 16.5 0 000-4h3.38a8.2 8.2 0 010 4z" fill="currentColor"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z" fill="currentColor"/></symbol>
     <symbol id="i-star-fill" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="currentColor"/></symbol>
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h9V6H5zm11 0v12h3V6h-3z" fill="currentColor"/></symbol>
     <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z" fill="currentColor"/></symbol>
     <symbol id="i-history" viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z" fill="currentColor"/></symbol>
     <symbol id="i-settings" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></symbol>
@@ -55,8 +56,8 @@ if(s.tab){if(s.tab.title)document.title=s.tab.title;if(s.tab.icon){var l=documen
       <input id="address" type="text" spellcheck="false" autocomplete="off" placeholder="Search or enter address">
       <button id="star" class="omni-btn" title="このページをブックマーク" aria-label="このページをブックマーク"><svg><use href="#i-star"/></svg></button>
     </div>
-    <button id="btn-sidebar" class="icon-btn" title="ブックマークと履歴" aria-label="ブックマークと履歴"><svg><use href="#i-bookmark"/></svg></button>
     <button id="btn-settings" class="icon-btn" title="設定" aria-label="設定"><svg><use href="#i-settings"/></svg></button>
+    <button id="btn-sidebar" class="icon-btn" title="サイドバー" aria-label="サイドバー"><svg><use href="#i-sidebar"/></svg></button>
     <button id="btn-account" class="icon-btn avatar-btn" title="アカウント" aria-label="アカウント"><span id="avatar-slot"><svg><use href="#i-person"/></svg></span></button>
     <button id="btn-fullscreen" class="icon-btn" type="button" title="サイトを全画面表示" aria-label="サイトを全画面表示" aria-pressed="false" disabled><svg><use href="#i-fullscreen"/></svg></button>
   </div>
@@ -94,7 +95,6 @@ if(s.tab){if(s.tab.title)document.title=s.tab.title;if(s.tab.icon){var l=documen
   </div>
 </div>
 
-<dialog id="dlg-settings"></dialog>
 <dialog id="dlg-account"></dialog>
 
 <script src="/config.js"></script>
