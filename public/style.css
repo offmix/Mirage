@@ -205,3 +205,8 @@ body.tab-locked #app{filter:blur(14px);pointer-events:none;user-select:none;tran
 .icon-choice.sel{border-color:var(--accent)}
 .icon-choice img{width:32px;height:32px;object-fit:contain}
 .icon-choice span{font-size:11px;color:var(--muted);text-align:center}
+
+/* Settings panel inside the sidebar */
+.sb-tools[hidden],.sb-list[hidden],.sb-settings[hidden]{display:none}
+#sb-settings.dlg-body{flex:1;min-height:0;padding:6px 14px 20px}
+#sb-settings .grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
