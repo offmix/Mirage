@@ -137,14 +137,16 @@ const MirageUI = (() => {
         <div class="sb-tabs">
           <button data-panel="bookmarks">ブックマーク</button>
           <button data-panel="history">履歴</button>
+          <button data-panel="settings">設定</button>
         </div>
         <button class="icon-btn small" data-sb-close title="閉じる" aria-label="閉じる">${ic("i-close")}</button>
       </div>
-      <div class="sb-tools">
+      <div class="sb-tools" id="sb-tools">
         <div class="sb-search">${ic("i-search")}<input id="sb-q" type="text" placeholder="検索" autocomplete="off"></div>
         <button class="btn" id="sb-action"></button>
       </div>
-      <div class="sb-list" id="sb-list"></div>`;
+      <div class="sb-list" id="sb-list"></div>
+      <div class="sb-settings dlg-body" id="sb-settings" hidden></div>`;
 
     sb().addEventListener("click", async (e) => {
       const t = e.target.closest("[data-panel]");
@@ -195,7 +197,12 @@ const MirageUI = (() => {
     renderSidebar();
     if (panel === "history") MirageData.loadHistory();
   }
-  function closeSidebar() { sb().hidden = true; $("#btn-sidebar").classList.remove("on"); }
+  function closeSidebar() {
+    sb().hidden = true;
+    $("#btn-sidebar").classList.remove("on");
+    $("#btn-settings").classList.remove("on");
+  }
+  const settingsOpen = () => !sb().hidden && panel === "settings";
   function toggleSidebar() { sb().hidden ? openSidebar() : closeSidebar(); }
 
   function shortUrl(u) {
@@ -218,6 +225,15 @@ const MirageUI = (() => {
   function renderSidebar() {
     if (sb().hidden) return;
     for (const b of sb().querySelectorAll("[data-panel]")) b.classList.toggle("active", b.dataset.panel === panel);
+    const isSettings = panel === "settings";
+    $("#sb-tools").hidden = isSettings;
+    $("#sb-list").hidden = isSettings;
+    $("#sb-settings").hidden = !isSettings;
+    $("#btn-settings").classList.toggle("on", isSettings);
+    if (isSettings) {
+      if ($("#sb-settings").dataset.ready) syncSettingsDialog(); else renderSettings();
+      return;
+    }
     const act = $("#sb-action");
     act.hidden = false;
     if (panel === "bookmarks") { act.textContent = "このページを追加"; act.className = "btn"; }
@@ -357,13 +373,12 @@ const MirageUI = (() => {
   }
 
   // ---------- settings ----------
-  const dlgSet = () => $("#dlg-settings");
+  const dlgSet = () => $("#sb-settings"); // settings now live in the sidebar
 
   function renderSettings() {
     const d = dlgSet(), s = S().settings;
+    d.dataset.ready = "1";
     d.innerHTML = `
-      <div class="dlg-head"><h2>設定</h2><button class="icon-btn small" data-close aria-label="閉じる">${ic("i-close")}</button></div>
-      <div class="dlg-body">
         <section>
           <h3>テーマ</h3>
           <div class="grid">${THEMES.map((t) => `<button class="card" data-theme="${t.id}"><span class="sw" style="background:${t.bg}"></span><span>${t.name}</span></button>`).join("")}</div>
@@ -392,8 +407,7 @@ const MirageUI = (() => {
         <section>
           <h3>同期</h3>
           <p class="note">${S().user ? "設定はアカウントに保存されます。" : MirageData.enabled ? "設定はこのブラウザに保存されます。サインインするとアカウントに保存されます。" : "設定はこのブラウザに保存されます。"}</p>
-        </section>
-      </div>`;
+        </section>`;
     // tiny previews inside each filter card
     d.querySelectorAll("[data-prev]").forEach((el) => {
       el.style.cssText = "position:absolute;inset:0;";
@@ -407,7 +421,7 @@ const MirageUI = (() => {
 
   function syncSettingsDialog() {
     const d = dlgSet();
-    if (!d.open) return;
+    if (!settingsOpen()) return;
     const s = S().settings;
     d.querySelectorAll("[data-theme]").forEach((b) => b.classList.toggle("sel", b.dataset.theme === s.theme));
     d.querySelectorAll("[data-accent]").forEach((b) => b.classList.toggle("sel", b.dataset.accent === s.accent));
@@ -431,7 +445,7 @@ const MirageUI = (() => {
     MirageLock.syncSettings(d);
   }
 
-  function openSettings() { renderSettings(); dlgSet().showModal(); syncSettingsDialog(); }
+  function openSettings() { if (settingsOpen()) closeSidebar(); else openSidebar("settings"); }
 
   function wireTab() {
     const d = dlgSet();
@@ -482,12 +496,12 @@ const MirageUI = (() => {
   function init() {
     buildSidebar();
     applyTheme(); applyFilter(); applyTab(); refreshAvatarBtn();
-    MirageLock.init({ onChange: () => { if (dlgSet().open) syncSettingsDialog(); } });
+    MirageLock.init({ onChange: () => { if (settingsOpen()) syncSettingsDialog(); } });
 
     $("#btn-sidebar").onclick = toggleSidebar;
     $("#btn-settings").onclick = openSettings;
     $("#btn-account").onclick = openAccount;
-    for (const d of [dlgSet(), dlgAcc()]) {
+    for (const d of [dlgAcc()]) {
       d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-close]")) d.close(); });
     }
     wireSettings();
@@ -498,7 +512,8 @@ const MirageUI = (() => {
     MirageData.on("auth", () => {
       refreshAvatarBtn();
       if (dlgAcc().open) renderAccount();
-      if (dlgSet().open) renderSettings();
+      dlgSet().dataset.ready = "";
+      if (settingsOpen()) renderSettings();
       renderSidebar();
       if (!sb().hidden && panel === "history") MirageData.loadHistory();
     });
