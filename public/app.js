@@ -15,6 +15,10 @@ if (typeof MirageLock === "undefined") {
   missingModules.push("lock.js");
   globalThis.MirageLock = { init() {}, settingsHtml: () => "", syncSettings() {}, wireSettings() {}, isLocked: () => false, getConfig: () => null };
 }
+if (typeof MirageAdblock === "undefined") {
+  missingModules.push("adblock.js");
+  globalThis.MirageAdblock = { init() {}, attach() {}, settingsHtml: () => "", syncSettings() {}, wireSettings() {}, isEnabled: () => false };
+}
 if (typeof MirageUI === "undefined") {
   missingModules.push("ui.js");
   globalThis.MirageUI = { init() {}, toggleFilter() {} };
@@ -62,7 +66,9 @@ const nativeAddListener = EventTarget.prototype.addEventListener; // parent real
 function attachKeys(tab) {
   try {
     const doc = tab.iframe.contentDocument;
-    if (!doc || keyDocs.has(doc)) return;
+    if (!doc) return;
+    MirageAdblock.attach(doc); // adds/removes the ad-hiding stylesheet (idempotent)
+    if (keyDocs.has(doc)) return;
     nativeAddListener.call(doc, "keydown", onShortcut, true);
     keyDocs.add(doc);
   } catch {}
