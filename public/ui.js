@@ -13,7 +13,7 @@ const MirageUI = (() => {
     { id: "forest", name: "フォレスト", bg: "#24382d" },
     { id: "sakura", name: "サクラ", bg: "#fff7fa" },
   ];
-  const ACCENTS = { blue: "#4285f4", purple: "#8b5cf6", green: "#1e9e5a", red: "#e5484d", orange: "#f08c00", pink: "#e5467f" };
+  const ACCENTS = { blue: "#4285f4", purple: "#8b5cf6", green: "#1e9e5a", red: "#e5484d", orange: "#f08c00", pink: "#e5467f", white: "#ffffff" };
   const FILTERS = [
     { id: "off", name: "オフ" }, { id: "dim", name: "暗くする" }, { id: "fog", name: "霧" },
     { id: "mono", name: "低コントラスト" }, { id: "hlines", name: "横線" },
@@ -30,8 +30,21 @@ const MirageUI = (() => {
   );
   const TAB_TEMPLATES = [
     { id: "classroom", name: "Classroom", title: "ホーム - Classroom", icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTPMiIU5F8QnFLsyFCsrCeJNUtk53s79A-6xHHBAcTF9g&s=10" },
+    { id: "calc", name: "Google 検索", title: "電卓 - Google 検索", icon: "https://www.google.com/favicon.ico" },
+    { id: "drive", name: "Google ドライブ", title: "ホーム - Google ドライブ", icon: "https://ssl.gstatic.com/docs/doclist/images/drive_favicon_2026_32dp.png" },
+    { id: "docs", name: "Google ドキュメント", title: "Google ドキュメント", icon: "https://www.gstatic.com/images/branding/productlogos/docs_2026/v2/web-48dp/logo_docs_2026_color_1x_web_48dp.png" },
     { id: "default", name: "デフォルト", title: "", icon: "" },
   ];
+  // Icons that can be picked from the image list (independent of the title).
+  const ICON_CHOICES = [
+    { id: "classroom", name: "Classroom", url: TAB_TEMPLATES[0].icon },
+    { id: "google", name: "Google", url: TAB_TEMPLATES[1].icon },
+    { id: "drive", name: "ドライブ", url: TAB_TEMPLATES[2].icon },
+    { id: "docs", name: "ドキュメント", url: TAB_TEMPLATES[3].icon },
+    { id: "mirage", name: "Mirage", url: "" },
+  ];
+  // Thumbnails go through the server (same origin) because cross-origin images are blocked by the page's COEP header.
+  const iconThumb = (url) => (url ? "/api/icon?u=" + encodeURIComponent(url) : DEFAULT_ICON);
   const validIconUrl = (u) => /^https?:\/\//i.test(u) || /^data:image\//i.test(u);
 
   function applyTab() {
@@ -370,6 +383,8 @@ const MirageUI = (() => {
           <div class="grid">${TAB_TEMPLATES.map((t) => `<button class="card" data-tabtpl="${t.id}"><span class="tpl-title">${esc(t.title || DEFAULT_TITLE)}</span><span>${esc(t.name)}</span></button>`).join("")}</div>
           <label class="field"><span>タイトル</span><input type="text" id="tb-title" maxlength="100" placeholder="${DEFAULT_TITLE}"></label>
           <label class="field"><span>アイコンのURL</span><input type="text" id="tb-icon" placeholder="https://example.com/icon.png" autocomplete="off"></label>
+          <h4>アイコンを選ぶ</h4>
+          <div class="icon-grid">${ICON_CHOICES.map((c) => `<button class="icon-choice" data-icon="${c.id}" title="${esc(c.name)}"><img src="${esc(iconThumb(c.url))}" alt="" width="32" height="32"><span>${esc(c.name)}</span></button>`).join("")}</div>
           <div class="msg" id="tb-msg" role="status"></div>
           <div class="row-btns"><button class="btn primary" id="tb-apply">適用</button><button class="btn" id="tb-reset">デフォルトに戻す</button></div>
         </section>
@@ -409,6 +424,10 @@ const MirageUI = (() => {
       const t = TAB_TEMPLATES.find((x) => x.id === b.dataset.tabtpl);
       b.classList.toggle("sel", !!t && t.title === (tb.title || "") && t.icon === (tb.icon || ""));
     });
+    d.querySelectorAll("[data-icon]").forEach((b) => {
+      const c = ICON_CHOICES.find((x) => x.id === b.dataset.icon);
+      b.classList.toggle("sel", !!c && c.url === (tb.icon || ""));
+    });
     MirageLock.syncSettings(d);
   }
 
@@ -418,6 +437,16 @@ const MirageUI = (() => {
     const d = dlgSet();
     const msg = (t, k) => { const m = d.querySelector("#tb-msg"); if (m) { m.textContent = t || ""; m.className = "msg " + (k || ""); } };
     d.addEventListener("click", (e) => {
+      const pick = e.target.closest("button[data-icon]");
+      if (pick) {
+        const c = ICON_CHOICES.find((x) => x.id === pick.dataset.icon);
+        if (c) {
+          const title = (S().settings.tab || {}).title || "";
+          MirageData.setSettings({ tab: { title, icon: c.url } });
+          msg("アイコンを変更しました。", "ok");
+        }
+        return;
+      }
       const tpl = e.target.closest("button[data-tabtpl]");
       if (tpl) {
         const t = TAB_TEMPLATES.find((x) => x.id === tpl.dataset.tabtpl);
