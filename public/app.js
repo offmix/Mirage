@@ -19,7 +19,7 @@ if (typeof MirageUI === "undefined") {
   missingModules.push("ui.js");
   globalThis.MirageUI = { init() {}, toggleFilter() {} };
 }
-const SEARCH = "https://www.google.com/search?q=%s";
+const SEARCH = "https://search.yahoo.co.jp/search?p=%s";
 const SHORTCUTS = [
   { name: "DuckDuckGo", url: "https://duckduckgo.com/" },
   { name: "Wikipedia", url: "https://www.wikipedia.org/" },
