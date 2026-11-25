@@ -10,7 +10,7 @@ const MirageData = (() => {
     : null;
 
   const LS = { settings: "mirage:settings", bookmarks: "mirage:bookmarks" };
-  const DEFAULT_SETTINGS = { theme: "system", accent: "blue", filter: { type: "off", strength: 60 }, tab: { title: "", icon: "" } };
+  const DEFAULT_SETTINGS = { theme: "system", accent: "blue", filter: { type: "off", strength: 60 }, tab: { title: "", icon: "" }, adblock: { enabled: false } };
 
   const readJSON = (k, fb) => { try { return JSON.parse(localStorage.getItem(k)) ?? fb; } catch { return fb; } };
   const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
