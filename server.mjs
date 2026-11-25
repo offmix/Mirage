@@ -96,6 +96,30 @@ fastify.get("/api/me", async (req, reply) => {
 // Lets the client detect which Scramjet build files exist.
 const scramDir = pkgDist("@mercuryworkshop/scramjet");
 console.log(`[mirage] scramjet files: ${readdirSync(scramDir).join(", ")}`);
+// Same-origin thumbnails for the tab-icon picker (cross-origin images are blocked by COEP).
+// Only a fixed list of trusted hosts can be fetched, so this cannot be used to reach other servers.
+const ICON_HOSTS = new Set([
+  "www.google.com", "ssl.gstatic.com", "www.gstatic.com", "encrypted-tbn0.gstatic.com", "icon-class-1.edgeone.dev",
+]);
+fastify.get("/api/icon", async (req, reply) => {
+  let u;
+  try { u = new URL(String((req.query && req.query.u) || "")); } catch { return reply.code(400).send({ error: "bad url" }); }
+  if (u.protocol !== "https:" || !ICON_HOSTS.has(u.hostname)) return reply.code(400).send({ error: "host not allowed" });
+  try {
+    const r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(8000), headers: { accept: "image/*" } });
+    if (!r.ok) return reply.code(502).send({ error: "upstream " + r.status });
+    if (!ICON_HOSTS.has(new URL(r.url).hostname)) return reply.code(400).send({ error: "redirect not allowed" });
+    const type = r.headers.get("content-type") || "";
+    if (!type.startsWith("image/")) return reply.code(415).send({ error: "not an image" });
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > 1_000_000) return reply.code(413).send({ error: "too large" });
+    reply.header("content-type", type).header("cache-control", "public, max-age=86400").header("cross-origin-resource-policy", "same-origin");
+    return reply.send(buf);
+  } catch (e) {
+    return reply.code(502).send({ error: "fetch failed" });
+  }
+});
+
 fastify.get("/scram-files.json", async () => readdirSync(scramDir));
 
 const port = Number(process.env.PORT) || 8080;
