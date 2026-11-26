@@ -34,13 +34,36 @@ const SHORTCUTS = [
 let scramjet, tabs = [], activeId = null, nextId = 1;
 let addrDirty = false;   // true while the user is editing the address bar
 
-// If a proxied (encoded) URL ever leaks through, turn it back into the real URL.
+// ---------- proxied URL -> real URL ----------
+// A proxied page lives at "<origin>/service/<encoded real URL>". The address bar must always show the real URL.
+const PROXY_PREFIX = "/service/";
+function isProxyUrl(s) {
+  s = String(s);
+  return s.startsWith(PROXY_PREFIX) || s.startsWith(location.origin + PROXY_PREFIX);
+}
+function lenientDecode(s) {
+  // decode every valid %XX run, leave broken ones (for example a lone "%") untouched
+  return s.replace(/(%[0-9a-fA-F]{2})+/g, (m) => { try { return decodeURIComponent(m); } catch { return m; } });
+}
 function toRealUrl(u) {
   const s = String(u);
-  const prefix = "/service/";
-  if (s.startsWith(prefix)) { try { return decodeURIComponent(s.slice(prefix.length)); } catch {} }
-  if (s.startsWith(location.origin + prefix)) { try { return decodeURIComponent(s.slice(location.origin.length + prefix.length)); } catch {} }
-  return s;
+  if (!isProxyUrl(s)) return s;
+  const rest = s.slice(s.indexOf(PROXY_PREFIX) + PROXY_PREFIX.length);
+  if (/^https?:\/\//i.test(rest)) return rest;             // not encoded at all
+  let real;
+  try { real = decodeURIComponent(rest); } catch { real = lenientDecode(rest); }
+  return real.replace(/^(https?:)\/(?!\/)/i, "$1//");       // "https:/host" -> "https://host"
+}
+// The real URL a tab is showing now, or "" if it cannot be told (blank frame, still loading).
+function currentRealUrl(tab) {
+  const candidates = [];
+  try { if (tab.frame && tab.frame.url) candidates.push(String(tab.frame.url)); } catch {}
+  try { candidates.push(tab.iframe.contentWindow.location.href); } catch {}
+  for (const c of candidates) {
+    const r = toRealUrl(c);
+    if (/^https?:/i.test(r) && !isProxyUrl(r)) return r;
+  }
+  return "";
 }
 
 // Keyboard shortcuts. Used on the Mirage page and also inside every proxied page,
@@ -366,7 +389,7 @@ function syncTab(tab) {
   try {
     const doc = tab.iframe.contentDocument;
     if (doc && doc.title && doc.title !== tab.title) setTitle(tab, doc.title);
-    const real = tab.frame.url ? toRealUrl(tab.frame.url) : null;
+    const real = currentRealUrl(tab);
     if (real && real !== tab.url) {
       tab.url = real;
       if (tab.id === activeId) updateStar();
