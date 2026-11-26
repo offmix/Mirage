@@ -21,6 +21,13 @@ const MirageUI = (() => {
     { id: "dots", name: "ドット" }, { id: "diag", name: "斜線" }, { id: "noise", name: "ノイズ" },
   ];
 
+  // Other projects (opened in a new Mirage tab)
+  const PROJECTS = [
+    { name: "みかんTube+", desc: "独自のYouTubeフロントエンド", url: "https://html.cafe/xa9e50f42" },
+    { name: "KAI-Chats NEXT", desc: "AIチャットアプリ", url: "https://script.google.com/macros/s/AKfycbzHD-m3N8-T6GN9Ti0LxmyIOZA6hvfNjIy5dc2erfazRVCXGZDs6348ErdvWYTtIjDj/exec" },
+    { name: "Better", desc: "「より良く」をテーマにしたプロジェクト", url: "https://html.cafe/x3d1c203e" },
+  ];
+
   // ---------- theme ----------
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   // ---------- tab title and icon (Mirage itself, not the proxied site) ----------
@@ -29,7 +36,7 @@ const MirageUI = (() => {
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><circle cx='24' cy='24' r='20' fill='none' stroke='#8b5cf6' stroke-width='4'/><path d='M8 28q8-8 16 0t16 0' fill='none' stroke='#8b5cf6' stroke-width='4' stroke-linecap='round'/></svg>"
   );
   const TAB_TEMPLATES = [
-    { id: "classroom", name: "Classroom", title: "ホーム - Classroom", icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTPMiIU5F8QnFLsyFCsrCeJNUtk53s79A-6xHHBAcTF9g&s=10" },
+    { id: "classroom", name: "Classroom", title: "ホーム - Classroom", icon: "https://clasroom-icon.edgeone.dev/file.png" },
     { id: "calc", name: "Google 検索", title: "電卓 - Google 検索", icon: "https://www.google.com/favicon.ico" },
     { id: "drive", name: "Google ドライブ", title: "ホーム - Google ドライブ", icon: "https://ssl.gstatic.com/docs/doclist/images/drive_favicon_2026_32dp.png" },
     { id: "docs", name: "Google ドキュメント", title: "Google ドキュメント", icon: "https://www.gstatic.com/images/branding/productlogos/docs_2026/v2/web-48dp/logo_docs_2026_color_1x_web_48dp.png" },
@@ -419,6 +426,11 @@ const MirageUI = (() => {
         <section>
           <h3>同期</h3>
           <p class="note">${S().user ? "設定はアカウントに保存されます。" : MirageData.enabled ? "設定はこのブラウザに保存されます。サインインするとアカウントに保存されます。" : "設定はこのブラウザに保存されます。"}</p>
+        </section>
+        <section>
+          <h3>他のプロジェクト</h3>
+          <p class="note">クリックすると、Mirage の新しいタブで開きます。</p>
+          <div class="project-list">${PROJECTS.map((p, i) => `<button class="project-link" data-project="${i}"><span class="pl-text"><span class="pl-name">${esc(p.name)}</span><br><span class="pl-desc">${esc(p.desc)}</span></span>${ic("i-forward")}</button>`).join("")}</div>
         </section>`);
     // tiny previews inside each filter card
     d.querySelectorAll("[data-prev]").forEach((el) => {
@@ -491,6 +503,14 @@ const MirageUI = (() => {
     });
   }
 
+  function wireProjects() {
+    dlgSet().addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-project]");
+      const p = b && PROJECTS[Number(b.dataset.project)];
+      if (p) window.MirageApp.newTab(p.url);
+    });
+  }
+
   function wireSettings() {
     const d = dlgSet();
     d.addEventListener("toggle", (e) => {
@@ -527,6 +547,7 @@ const MirageUI = (() => {
     MirageAdblock.wireSettings(dlgSet());
     MirageAdblock.init();
     wireTab();
+    wireProjects();
 
     MirageData.on("settings", () => { applyTheme(); applyFilter(); applyTab(); syncSettingsDialog(); });
     MirageData.on("auth", () => {
