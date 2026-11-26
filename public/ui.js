@@ -54,16 +54,47 @@ const MirageUI = (() => {
   const iconThumb = (url) => (url ? "/api/icon?u=" + encodeURIComponent(url) : DEFAULT_ICON);
   const validIconUrl = (u) => /^https?:\/\//i.test(u) || /^data:image\//i.test(u);
 
-  function applyTab() {
-    const t = S().settings.tab || {};
-    document.title = t.title || DEFAULT_TITLE;
-    const href = t.icon || DEFAULT_ICON;
+  // The icon is loaded through this server (same origin), drawn onto a 64x64 canvas and used as a PNG data URL.
+  // That avoids cross-origin / COEP / wrong-content-type problems and oversized images. If that fails,
+  // the original URL is used directly.
+  let iconToken = 0, lastIcon = null;
+  function iconToDataUrl(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const size = 64, c = document.createElement("canvas");
+          c.width = c.height = size;
+          const w = img.naturalWidth || size, h = img.naturalHeight || size, k = size / Math.max(w, h);
+          c.getContext("2d").drawImage(img, (size - w * k) / 2, (size - h * k) / 2, w * k, h * k);
+          resolve(c.toDataURL("image/png"));
+        } catch (e) { reject(e); }
+      };
+      img.onerror = () => reject(new Error("icon could not be loaded"));
+      img.src = src;
+    });
+  }
+  function setIconLink(href) {
     const old = document.getElementById("mirage-icon");
-    if (old && old.getAttribute("href") === href) return;
     if (old) old.remove();
     const link = document.createElement("link"); // re-created so the browser reloads the icon
     link.id = "mirage-icon"; link.rel = "icon"; link.href = href;
     document.head.appendChild(link);
+  }
+  async function applyTab() {
+    const t = S().settings.tab || {};
+    document.title = t.title || DEFAULT_TITLE;
+    const icon = t.icon || "";
+    if (icon === lastIcon) return;
+    lastIcon = icon;
+    const token = ++iconToken;
+    if (!icon) { setIconLink(DEFAULT_ICON); return; }
+    let href = icon; // fallback: the original URL
+    if (/^https?:/i.test(icon)) {
+      try { href = await iconToDataUrl("/api/icon?u=" + encodeURIComponent(icon)); }
+      catch (e) { console.warn("[mirage] tab icon: falling back to the direct URL", e); }
+    }
+    if (token === iconToken) setIconLink(href);
   }
 
   function applyTheme() {
@@ -429,8 +460,8 @@ const MirageUI = (() => {
         </section>
         <section>
           <h3>他のプロジェクト</h3>
-          <p class="note">クリックすると、Mirage の新しいタブで開きます。</p>
-          <div class="project-list">${PROJECTS.map((p, i) => `<button class="project-link" data-project="${i}"><span class="pl-text"><span class="pl-name">${esc(p.name)}</span><br><span class="pl-desc">${esc(p.desc)}</span></span>${ic("i-forward")}</button>`).join("")}</div>
+          <p class="note">クリックすると、ブラウザの新しいタブで開きます。</p>
+          <div class="project-list">${PROJECTS.map((p) => `<a class="project-link" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer"><span class="pl-text"><span class="pl-name">${esc(p.name)}</span><br><span class="pl-desc">${esc(p.desc)}</span></span>${ic("i-forward")}</a>`).join("")}</div>
         </section>`);
     // tiny previews inside each filter card
     d.querySelectorAll("[data-prev]").forEach((el) => {
@@ -503,14 +534,6 @@ const MirageUI = (() => {
     });
   }
 
-  function wireProjects() {
-    dlgSet().addEventListener("click", (e) => {
-      const b = e.target.closest("button[data-project]");
-      const p = b && PROJECTS[Number(b.dataset.project)];
-      if (p) window.MirageApp.newTab(p.url);
-    });
-  }
-
   function wireSettings() {
     const d = dlgSet();
     d.addEventListener("toggle", (e) => {
@@ -547,7 +570,6 @@ const MirageUI = (() => {
     MirageAdblock.wireSettings(dlgSet());
     MirageAdblock.init();
     wireTab();
-    wireProjects();
 
     MirageData.on("settings", () => { applyTheme(); applyFilter(); applyTab(); syncSettingsDialog(); });
     MirageData.on("auth", () => {
