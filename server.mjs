@@ -99,7 +99,7 @@ console.log(`[mirage] scramjet files: ${readdirSync(scramDir).join(", ")}`);
 // Same-origin thumbnails for the tab-icon picker (cross-origin images are blocked by COEP).
 // Only a fixed list of trusted hosts can be fetched, so this cannot be used to reach other servers.
 const ICON_HOSTS = new Set([
-  "www.google.com", "ssl.gstatic.com", "www.gstatic.com", "encrypted-tbn0.gstatic.com", "icon-class-1.edgeone.dev",
+  "www.google.com", "ssl.gstatic.com", "www.gstatic.com", "encrypted-tbn0.gstatic.com", "icon-class-1.edgeone.dev", "clasroom-icon.edgeone.dev",
 ]);
 fastify.get("/api/icon", async (req, reply) => {
   let u;
