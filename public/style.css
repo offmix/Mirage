@@ -230,7 +230,7 @@ body.tab-locked #app{filter:blur(14px);pointer-events:none;user-select:none;tran
 
 /* Other projects */
 .project-list{margin:4px -6px 0}
-.project-link{display:flex;align-items:center;gap:10px;width:100%;padding:10px 6px;border-radius:8px;text-align:left}
+.project-link{text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px;width:100%;padding:10px 6px;border-radius:8px;text-align:left}
 .project-link:hover{background:var(--hover)}
 .project-link .pl-text{flex:1;min-width:0}
 .project-link .pl-name{font-weight:700}
