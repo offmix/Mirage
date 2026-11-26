@@ -61,6 +61,50 @@ function onShortcut(e) {
   else if (e.altKey && e.code === "KeyZ") { e.preventDefault(); e.stopPropagation(); MirageUI.toggleFilter(); }
 }
 
+// ---------- links that open a new tab or window ----------
+// Inside a proxied page, target="_blank" links, Ctrl/Middle-click and window.open() would open a real
+// browser tab. Open a new Mirage tab (proxied) instead.
+function resolveReal(raw, base) {
+  try { return new URL(toRealUrl(raw), base || undefined).toString(); } catch { return ""; }
+}
+
+// Returns the real URL to open in a new Mirage tab for this click, or "" to leave the click alone.
+function newTabIntent(el, e, base) {
+  const a = el && el.closest ? el.closest("a[href], area[href]") : null;
+  if (!a) return "";
+  const target = String(a.target || "").toLowerCase();
+  const wantsNew = (target && !["_self", "_parent", "_top"].includes(target)) ||
+    e.ctrlKey || e.metaKey || (e.type === "auxclick" && e.button === 1);
+  if (!wantsNew) return "";
+  const url = resolveReal(a.href || a.getAttribute("href") || "", base);
+  return /^https?:/i.test(url) ? url : "";
+}
+
+const linkDocs = new WeakSet();
+function attachLinks(tab, doc) {
+  if (linkDocs.has(doc)) return;
+  linkDocs.add(doc);
+  const onClick = (e) => {
+    if (e.type === "click" && e.button !== 0) return;
+    const url = newTabIntent(e.target, e, tab.url);
+    if (!url) return;
+    e.preventDefault();
+    e.stopPropagation();
+    newTab(url);
+  };
+  nativeAddListener.call(doc, "click", onClick, true);
+  nativeAddListener.call(doc, "auxclick", onClick, true);
+  try {
+    const win = doc.defaultView;
+    const original = win.open;
+    win.open = function (url) {
+      const real = url ? resolveReal(String(url), tab.url) : "";
+      if (/^https?:/i.test(real)) { newTab(real); return null; }
+      return original.apply(win, arguments); // about:blank etc. stay with the page's own handling
+    };
+  } catch {}
+}
+
 const keyDocs = new WeakSet();
 const nativeAddListener = EventTarget.prototype.addEventListener; // parent realm's own function (not Scramjet's patched one)
 function attachKeys(tab) {
@@ -68,6 +112,7 @@ function attachKeys(tab) {
     const doc = tab.iframe.contentDocument;
     if (!doc) return;
     MirageAdblock.attach(doc); // adds/removes the ad-hiding stylesheet (idempotent)
+    attachLinks(tab, doc);
     if (keyDocs.has(doc)) return;
     nativeAddListener.call(doc, "keydown", onShortcut, true);
     keyDocs.add(doc);
