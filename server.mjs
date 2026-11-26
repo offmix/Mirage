@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { server as wisp } from "@mercuryworkshop/wisp-js/server";
+import { fetchIcon } from "./icon-proxy.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 // Locate package files directly in node_modules (avoids "exports" restrictions on package.json).
@@ -96,28 +97,34 @@ fastify.get("/api/me", async (req, reply) => {
 // Lets the client detect which Scramjet build files exist.
 const scramDir = pkgDist("@mercuryworkshop/scramjet");
 console.log(`[mirage] scramjet files: ${readdirSync(scramDir).join(", ")}`);
-// Same-origin thumbnails for the tab-icon picker (cross-origin images are blocked by COEP).
-// Only a fixed list of trusted hosts can be fetched, so this cannot be used to reach other servers.
-const ICON_HOSTS = new Set([
-  "www.google.com", "ssl.gstatic.com", "www.gstatic.com", "encrypted-tbn0.gstatic.com", "icon-class-1.edgeone.dev", "clasroom-icon.edgeone.dev",
-]);
+// Same-origin copy of a remote image, used for the tab icon and the icon picker.
+// Serving it from this origin avoids cross-origin / COEP / wrong-MIME problems, and the server
+// checks that the file really is a raster image (see icon-proxy.mjs for the SSRF guards).
+const iconCache = new Map();   // url -> { type, body, t }
+const iconHits = new Map();    // ip -> { n, t }  (simple rate limit)
 fastify.get("/api/icon", async (req, reply) => {
+  const now = Date.now();
+  const h = iconHits.get(req.ip);
+  if (!h || now - h.t > 60_000) iconHits.set(req.ip, { n: 1, t: now });
+  else if (++h.n > 60) return reply.code(429).send({ error: "too many requests" });
+
   let u;
   try { u = new URL(String((req.query && req.query.u) || "")); } catch { return reply.code(400).send({ error: "bad url" }); }
-  if (u.protocol !== "https:" || !ICON_HOSTS.has(u.hostname)) return reply.code(400).send({ error: "host not allowed" });
-  try {
-    const r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(8000), headers: { accept: "image/*" } });
-    if (!r.ok) return reply.code(502).send({ error: "upstream " + r.status });
-    if (!ICON_HOSTS.has(new URL(r.url).hostname)) return reply.code(400).send({ error: "redirect not allowed" });
-    const type = r.headers.get("content-type") || "";
-    if (!type.startsWith("image/")) return reply.code(415).send({ error: "not an image" });
-    const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.length > 1_000_000) return reply.code(413).send({ error: "too large" });
-    reply.header("content-type", type).header("cache-control", "public, max-age=86400").header("cross-origin-resource-policy", "same-origin");
-    return reply.send(buf);
-  } catch (e) {
-    return reply.code(502).send({ error: "fetch failed" });
+  const key = u.toString();
+  let hit = iconCache.get(key);
+  if (!hit || now - hit.t > 86_400_000) {
+    try {
+      const { type, body } = await fetchIcon(u);
+      hit = { type, body, t: now };
+      iconCache.set(key, hit);
+      if (iconCache.size > 200) iconCache.delete(iconCache.keys().next().value);
+    } catch (e) {
+      return reply.code(502).send({ error: String((e && e.message) || e) });
+    }
   }
+  reply.header("content-type", hit.type).header("cache-control", "public, max-age=86400")
+    .header("x-content-type-options", "nosniff").header("cross-origin-resource-policy", "same-origin");
+  return reply.send(hit.body);
 });
 
 fastify.get("/scram-files.json", async () => readdirSync(scramDir));
