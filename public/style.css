@@ -227,3 +227,12 @@ body.tab-locked #app{filter:blur(14px);pointer-events:none;user-select:none;tran
 .warn-box ul{margin:6px 0 0;padding-left:18px}
 .check{display:flex;align-items:center;gap:8px;margin:10px 0;cursor:pointer}
 .check input{width:16px;height:16px;accent-color:var(--accent)}
+
+/* Other projects */
+.project-list{margin:4px -6px 0}
+.project-link{display:flex;align-items:center;gap:10px;width:100%;padding:10px 6px;border-radius:8px;text-align:left}
+.project-link:hover{background:var(--hover)}
+.project-link .pl-text{flex:1;min-width:0}
+.project-link .pl-name{font-weight:700}
+.project-link .pl-desc{color:var(--muted);font-size:12px}
+.project-link svg{width:16px;height:16px;color:var(--muted);flex:none}
