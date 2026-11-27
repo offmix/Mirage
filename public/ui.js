@@ -16,9 +16,11 @@ const MirageUI = (() => {
   const ACCENTS = { blue: "#4285f4", purple: "#8b5cf6", green: "#1e9e5a", red: "#e5484d", orange: "#f08c00", pink: "#e5467f", white: "#ffffff" };
   const FILTERS = [
     { id: "off", name: "オフ" }, { id: "dim", name: "暗くする" }, { id: "fog", name: "霧" },
-    { id: "mono", name: "低コントラスト" }, { id: "hlines", name: "横線" },
-    { id: "vlines", name: "縦線(ブラインド)" }, { id: "mesh", name: "格子" },
-    { id: "dots", name: "ドット" }, { id: "diag", name: "斜線" }, { id: "noise", name: "ノイズ" },
+    { id: "mono", name: "低コントラスト" }, { id: "blur", name: "ぼかし" }, { id: "sepia", name: "セピア" },
+    { id: "invert", name: "色反転" }, { id: "spot", name: "スポット" },
+    { id: "hlines", name: "横線" }, { id: "vlines", name: "縦線(ブラインド)" }, { id: "stripes", name: "太い横縞" },
+    { id: "mesh", name: "格子" }, { id: "grid", name: "大きな格子" }, { id: "checker", name: "市松" },
+    { id: "dots", name: "ドット" }, { id: "halftone", name: "ハーフトーン" }, { id: "diag", name: "斜線" }, { id: "noise", name: "ノイズ" },
   ];
 
   // Other projects (opened in a new Mirage tab)
@@ -141,6 +143,30 @@ const MirageUI = (() => {
       }
       case "noise":
         return { backgroundImage: NOISE, backgroundSize: "160px 160px", opacity: f(0.3 + 0.7 * s), backdropFilter: `brightness(${f(1 - 0.2 * s)})` };
+      case "blur":
+        return { backdropFilter: `blur(${(2 + 8 * s).toFixed(1)}px)` };
+      case "sepia":
+        return { backgroundColor: `rgba(40,20,0,${f(0.1 + 0.25 * s)})`, backdropFilter: `sepia(1) brightness(${f(1 - 0.4 * s)}) contrast(${f(1 - 0.25 * s)})` };
+      case "invert":
+        return { backdropFilter: `invert(1) hue-rotate(180deg) brightness(${f(1 - 0.3 * s)}) contrast(${f(1 - 0.25 * s)})` };
+      case "spot":   // only the middle of the screen stays readable
+        return { backgroundImage: `radial-gradient(ellipse at center, transparent ${(40 - 25 * s).toFixed(0)}%, rgba(0,0,0,${f(0.6 + 0.35 * s)}) ${(80 - 15 * s).toFixed(0)}%)` };
+      case "stripes": {
+        const w = 3 + 5 * s;
+        return { backgroundImage: `repeating-linear-gradient(0deg, rgba(0,0,0,${f(0.45 + 0.4 * s)}) 0 ${w.toFixed(1)}px, transparent ${w.toFixed(1)}px ${(w * 2).toFixed(1)}px)` };
+      }
+      case "grid": {
+        const w = (2 + 3 * s).toFixed(1), c = `rgba(0,0,0,${f(0.6 + 0.3 * s)})`;
+        return { backgroundImage: `repeating-linear-gradient(0deg, ${c} 0 ${w}px, transparent ${w}px 14px), repeating-linear-gradient(90deg, ${c} 0 ${w}px, transparent ${w}px 14px)` };
+      }
+      case "checker": {
+        const cell = 3 + 3 * s, c = `rgba(0,0,0,${f(0.5 + 0.4 * s)})`;
+        return { backgroundImage: `conic-gradient(${c} 25%, transparent 0 50%, ${c} 0 75%, transparent 0)`, backgroundSize: `${(cell * 2).toFixed(1)}px ${(cell * 2).toFixed(1)}px` };
+      }
+      case "halftone": {
+        const r = 1.5 + 2.5 * s;
+        return { backgroundImage: `radial-gradient(circle at center, rgba(0,0,0,${f(0.6 + 0.35 * s)}) ${r.toFixed(1)}px, transparent ${(r + 1).toFixed(1)}px)`, backgroundSize: "9px 9px" };
+      }
       default:
         return null;
     }
@@ -176,6 +202,7 @@ const MirageUI = (() => {
           <button data-panel="bookmarks">ブックマーク</button>
           <button data-panel="history">履歴</button>
           <button data-panel="settings">設定</button>
+          <button data-panel="weather">天気</button>
         </div>
         <button class="icon-btn small" data-sb-close title="閉じる" aria-label="閉じる">${ic("i-close")}</button>
       </div>
@@ -185,6 +212,7 @@ const MirageUI = (() => {
       </div>
       <div class="sb-list" id="sb-list"></div>
       <div class="sb-settings dlg-body" id="sb-settings" hidden></div>
+      <div class="sb-weather" id="sb-weather" hidden></div>
       <div class="sb-foot info-widget" id="sb-foot" hidden></div>`;
 
     sb().addEventListener("click", async (e) => {
@@ -264,11 +292,14 @@ const MirageUI = (() => {
   function renderSidebar() {
     if (sb().hidden) return;
     for (const b of sb().querySelectorAll("[data-panel]")) b.classList.toggle("active", b.dataset.panel === panel);
-    const isSettings = panel === "settings";
-    $("#sb-tools").hidden = isSettings;
-    $("#sb-list").hidden = isSettings;
+    const isSettings = panel === "settings", isWeather = panel === "weather";
+    $("#sb-tools").hidden = isSettings || isWeather;
+    $("#sb-list").hidden = isSettings || isWeather;
     $("#sb-settings").hidden = !isSettings;
+    $("#sb-weather").hidden = !isWeather;
+    $("#sb-foot").style.display = isWeather ? "none" : ""; // the weather panel already shows everything
     $("#btn-settings").classList.toggle("on", isSettings);
+    if (isWeather) { MirageWidgets.render(); return; }
     if (isSettings) {
       if ($("#sb-settings").dataset.ready) syncSettingsDialog(); else renderSettings();
       return;
