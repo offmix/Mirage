@@ -107,12 +107,31 @@ function newTabIntent(el, e, base) {
   return /^https?:/i.test(url) ? url : "";
 }
 
+// target="_top" / "_parent" would navigate the whole Mirage window; load it in this tab instead.
+function sameTabIntent(el, e, base) {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.type === "auxclick") return "";
+  const a = el && el.closest ? el.closest("a[href], area[href]") : null;
+  if (!a) return "";
+  const target = String(a.target || "").toLowerCase();
+  if (target !== "_top" && target !== "_parent") return "";
+  const url = resolveReal(a.href || a.getAttribute("href") || "", base);
+  return /^https?:/i.test(url) ? url : "";
+}
+
 const linkDocs = new WeakSet();
 function attachLinks(tab, doc) {
   if (linkDocs.has(doc)) return;
   linkDocs.add(doc);
   const onClick = (e) => {
     if (e.type === "click" && e.button !== 0) return;
+    const same = sameTabIntent(e.target, e, tab.url);
+    if (same) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (tab.id !== activeId) activate(tab.id);
+      navigate(same);
+      return;
+    }
     const url = newTabIntent(e.target, e, tab.url);
     if (!url) return;
     e.preventDefault();
@@ -285,6 +304,11 @@ function renderShortcuts() {
 function newTab(url) {
   const id = nextId++;
   const iframe = document.createElement("iframe");
+  // The proxied page must never be able to navigate the Mirage window itself (top.location = ...,
+  // target="_top", frame busters). "allow-top-navigation" is deliberately left out of the sandbox.
+  iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-pointer-lock allow-presentation allow-orientation-lock");
+  iframe.setAttribute("allow", "fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share");
+  iframe.setAttribute("allowfullscreen", "");
   $("#frames").appendChild(iframe);
   const frame = scramjet.createFrame(iframe);
   const tab = { id, iframe, frame, title: "New Tab", url: "", el: null, favSrc: "" };
