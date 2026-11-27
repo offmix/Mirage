@@ -184,7 +184,8 @@ const MirageUI = (() => {
         <button class="btn" id="sb-action"></button>
       </div>
       <div class="sb-list" id="sb-list"></div>
-      <div class="sb-settings dlg-body" id="sb-settings" hidden></div>`;
+      <div class="sb-settings dlg-body" id="sb-settings" hidden></div>
+      <div class="sb-foot info-widget" id="sb-foot" hidden></div>`;
 
     sb().addEventListener("click", async (e) => {
       const t = e.target.closest("[data-panel]");
@@ -414,7 +415,7 @@ const MirageUI = (() => {
   const dlgSet = () => $("#sb-settings"); // settings now live in the sidebar
 
   // Settings sections are collapsible so the panel is easy to scan; the open ones are remembered.
-  const openSecs = new Set(["テーマ"]);
+  const openSecs = new Set(); // every section starts closed
   function accordion(html) {
     return html
       .replace(/<section>\s*<h3>([\s\S]*?)<\/h3>/g, (m, title) => {
@@ -434,6 +435,7 @@ const MirageUI = (() => {
           <h4>アクセントカラー</h4>
           <div class="accents">${Object.entries(ACCENTS).map(([k, v]) => `<button class="dot" data-accent="${k}" style="background:${v}" title="${k}" aria-label="${k}"></button>`).join("")}</div>
         </section>
+        ${MirageWidgets.settingsHtml()}
         <section>
           <h3>ページフィルター</h3>
           <p class="note">横から覗かれても読みにくくするフィルターです。Alt+Z ですばやく切り替えられます。物理的なプライバシーフィルムのように視野角で見えなくなるものではなく、見づらくすることで内容を隠します。</p>
@@ -499,6 +501,7 @@ const MirageUI = (() => {
     });
     MirageLock.syncSettings(d);
     MirageAdblock.syncSettings(d);
+    MirageWidgets.syncSettings(d);
   }
 
   function openSettings() { if (settingsOpen()) closeSidebar(); else openSidebar("settings"); }
@@ -569,6 +572,8 @@ const MirageUI = (() => {
     MirageLock.wireSettings(dlgSet(), () => syncSettingsDialog());
     MirageAdblock.wireSettings(dlgSet());
     MirageAdblock.init();
+    MirageWidgets.wireSettings(dlgSet());
+    MirageWidgets.init();
     wireTab();
 
     MirageData.on("settings", () => { applyTheme(); applyFilter(); applyTab(); syncSettingsDialog(); });
