@@ -72,8 +72,12 @@ const MirageWidgets = (() => {
     fog: "M2 15.5v2h20v-2H2zm0-5v2h20v-2H2zm0-5v2h20v-2H2z",
     clock: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z",
     pin: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
+    air: "M14.5 17c0 1.65-1.35 3-3 3s-3-1.35-3-3h2c0 .55.45 1 1 1s1-.45 1-1-.45-1-1-1H2v-2h9.5c1.65 0 3 1.35 3 3zM19 6.5C19 4.57 17.43 3 15.5 3S12 4.57 12 6.5h2c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S16.33 8 15.5 8H2v2h13.5c1.93 0 3.5-1.57 3.5-3.5zm-.5 4.5H2v2h16.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5v2c1.93 0 3.5-1.57 3.5-3.5S20.43 11 18.5 11z",
+    nav: "M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z",
+    up: "M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z",
+    down: "M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z",
   };
-  const COLOR = { sunny: "#f5a623", moon: "#a5b4fc", cloud: "currentColor", drop: "#4aa3ff", snow: "#7dd3fc", bolt: "#fbbf24", fog: "currentColor" };
+  const COLOR = { sunny: "#f5a623", moon: "#a5b4fc", cloud: "currentColor", drop: "#4aa3ff", snow: "#7dd3fc", bolt: "#fbbf24", fog: "currentColor", up: "#f5a623", down: "#a5b4fc" };
   const svg = (inner, cls) => `<svg class="iw-ico ${cls || ""}" viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
   const path = (name, extra) => `<path d="${P[name]}" fill="${COLOR[name] || "currentColor"}" ${extra || ""}/>`;
   // a small sun/moon behind a cloud; the cloud has a background-colored outline so the two read as separate shapes
@@ -105,11 +109,29 @@ const MirageWidgets = (() => {
     return ["不明", path("cloud")];
   }
 
-  // ---------- settings ----------
+  // ---------- formatting ----------
   const S = () => MirageData.state.settings;
   const cfg = () => ({ clock: true, weather: true, region: "tokyo", ...(S().widgets || {}) });
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const none = (v) => v === null || v === undefined || Number.isNaN(v);
+  const deg = (v) => (none(v) ? "--" : Math.round(v) + "°");
+  const pct = (v) => (none(v) ? "--" : Math.round(v) + "%");
+  const mm = (v) => (none(v) ? "--" : (Math.round(v * 10) / 10).toFixed(1) + "mm");
+  const ms = (v) => (none(v) ? "--" : (Math.round(v * 10) / 10).toFixed(1) + "m/s");
+  const WIND16 = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"];
+  const windDir = (d) => (none(d) ? "--" : WIND16[Math.round(d / 22.5) % 16]);
+  const uvText = (v) => (none(v) ? "--" : (Math.round(v * 10) / 10) + "(" + (v < 3 ? "弱い" : v < 6 ? "中程度" : v < 8 ? "強い" : v < 11 ? "非常に強い" : "極端に強い") + ")");
+  const hm = (iso) => (iso ? String(iso).slice(11, 16) : "--:--");
+  const hourLabel = (iso) => Number(String(iso).slice(11, 13)) + "時";
+  function dayLabel(iso, i) {
+    if (i === 0) return "今日";
+    if (i === 1) return "明日";
+    const [y, m, d] = String(iso).split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+  }
+  const arrow = (dir) => (none(dir) ? "" : svg(`<path d="${P.nav}" fill="currentColor" transform="rotate(${Math.round(dir) + 180} 12 12)"/>`, "iw-arrow"));
 
+  // ---------- settings ----------
   function settingsHtml() {
     const options = GROUPS.map(([group, , items]) =>
       `<optgroup label="${esc(group)}">${items.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join("")}</optgroup>`
@@ -120,7 +142,7 @@ const MirageWidgets = (() => {
           <label class="check"><input id="wd-clock" type="checkbox"><span>現在時刻を表示する</span></label>
           <label class="check"><input id="wd-weather" type="checkbox"><span>天気を表示する</span></label>
           <label class="field"><span>天気の地域</span><select id="wd-region">${options}</select></label>
-          <p class="note">新しいタブの右上と、サイドバーの下に表示します。天気のデータは <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a>(CC BY 4.0)から取得しています。</p>
+          <p class="note">新しいタブの右上と、サイドバーの下に表示します。「詳しく見る」で、時間ごとの予報と7日間の予報を見られます。天気のデータは <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a>(CC BY 4.0)から取得しています。</p>
         </section>
 `;
   }
@@ -140,13 +162,52 @@ const MirageWidgets = (() => {
     });
   }
 
-  // ---------- weather ----------
+  // ---------- weather data (Open-Meteo) ----------
   const WEATHER_TTL = 15 * 60 * 1000;
-  let weather = null;        // { regionId, temp, code, day, max, min, t } or { regionId, error: true }
+  const CACHE_KEY = "mirage:weather2";
+  let weather = null;        // parsed forecast, or { regionId, error: true }
   let loading = null;
 
+  function forecastUrl(r) {
+    return "https://api.open-meteo.com/v1/forecast?latitude=" + r.lat + "&longitude=" + r.lon +
+      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,is_day" +
+      "&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,uv_index,is_day" +
+      "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset" +
+      "&forecast_days=7&wind_speed_unit=ms&timezone=auto";
+  }
+
+  // Open-Meteo JSON -> the model used for rendering
+  function parse(j, regionId) {
+    const c = j.current, h = j.hourly, d = j.daily;
+    const nowKey = String(c.time).slice(0, 13);
+    let i0 = h.time.findIndex((t) => t.slice(0, 13) >= nowKey);
+    if (i0 < 0) i0 = 0;
+    const hourAt = (i) => ({
+      time: h.time[i], temp: h.temperature_2m[i], hum: h.relative_humidity_2m[i], pop: h.precipitation_probability[i],
+      rain: h.precipitation[i], code: h.weather_code[i], uv: h.uv_index[i], day: h.is_day[i] !== 0,
+    });
+    const hours = [];
+    for (let i = i0; i < Math.min(i0 + 24, h.time.length); i++) hours.push(hourAt(i));
+    const days = d.time.map((date, k) => {
+      let sum = 0, n = 0;
+      h.time.forEach((t, i) => { if (t.startsWith(date) && h.relative_humidity_2m[i] != null) { sum += h.relative_humidity_2m[i]; n++; } });
+      return {
+        date, code: d.weather_code[k], max: d.temperature_2m_max[k], min: d.temperature_2m_min[k],
+        pop: d.precipitation_probability_max[k], rain: d.precipitation_sum[k], wind: d.wind_speed_10m_max[k],
+        windDir: d.wind_direction_10m_dominant[k], uv: d.uv_index_max[k], sunrise: d.sunrise[k], sunset: d.sunset[k],
+        hum: n ? sum / n : null,
+      };
+    });
+    const now = hourAt(i0);
+    return {
+      regionId, t: Date.now(), tz: j.timezone,
+      cur: { temp: c.temperature_2m, feels: c.apparent_temperature, hum: c.relative_humidity_2m, rain: c.precipitation, code: c.weather_code, day: c.is_day !== 0, wind: c.wind_speed_10m, windDir: c.wind_direction_10m },
+      pop: now.pop, uv: now.uv, hours, days,
+    };
+  }
+
   function cached(regionId) {
-    try { const v = JSON.parse(localStorage.getItem("mirage:weather") || "null"); return v && v.regionId === regionId ? v : null; } catch { return null; }
+    try { const v = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return v && v.regionId === regionId && v.cur && v.days ? v : null; } catch { return null; }
   }
   async function loadWeather(force) {
     const c = cfg();
@@ -155,20 +216,12 @@ const MirageWidgets = (() => {
     if (!force && weather && weather.regionId === r.id && !weather.error && Date.now() - weather.t < WEATHER_TTL) return;
     const token = (loading = {});
     try {
-      const url = "https://api.open-meteo.com/v1/forecast?latitude=" + r.lat + "&longitude=" + r.lon +
-        "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto";
-      const res = await fetch(url);
+      const res = await fetch(forecastUrl(r));
       if (!res.ok) throw new Error("HTTP " + res.status);
-      const j = await res.json();
-      const next = {
-        regionId: r.id, t: Date.now(),
-        temp: j.current.temperature_2m, code: j.current.weather_code, day: j.current.is_day !== 0,
-        max: j.daily && j.daily.temperature_2m_max ? j.daily.temperature_2m_max[0] : null,
-        min: j.daily && j.daily.temperature_2m_min ? j.daily.temperature_2m_min[0] : null,
-      };
+      const next = parse(await res.json(), r.id);
       if (token !== loading || cfg().region !== r.id) return;   // region changed while loading
       weather = next;
-      try { localStorage.setItem("mirage:weather", JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     } catch (e) {
       if (token !== loading) return;
       console.warn("[mirage] weather", e);
@@ -177,8 +230,7 @@ const MirageWidgets = (() => {
     render();
   }
 
-  // ---------- rendering ----------
-  const deg = (v) => (v === null || v === undefined ? "--" : Math.round(v) + "°");
+  // ---------- rendering: widget ----------
   function offsetMinutes(tz, d) {
     try {
       const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
@@ -188,18 +240,26 @@ const MirageWidgets = (() => {
   }
   const hhmm = (d, tz) => d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false, ...(tz ? { timeZone: tz } : {}) });
   const dayText = (d) => d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
+  const ready = (r) => weather && weather.regionId === r.id && !weather.error && weather.cur;
 
-  function html() {
+  // kind: "ntp" (new tab page, with the extra row) or "sb" (sidebar footer, compact)
+  function html(kind) {
     const c = cfg(), r = regionById(c.region), out = [];
     if (c.clock) {
-      out.push(`<div class="iw-line">${svg(path("clock"), "iw-clock")}<span class="iw-time" data-iw="time"></span><span class="iw-date" data-iw="date"></span></div>`);
+      // the colon blinks (CSS animation on .iw-colon)
+      out.push(`<div class="iw-line">${svg(path("clock"), "iw-clock")}<span class="iw-time"><span data-iw="hh">--</span><span class="iw-colon">:</span><span data-iw="mm">--</span></span><span class="iw-date" data-iw="date"></span></div>`);
       out.push(`<div class="iw-line iw-local-line" data-iw="localline" hidden><span class="iw-local" data-iw="local"></span></div>`);
     }
     if (c.weather) {
-      if (weather && weather.regionId === r.id && !weather.error) {
-        const [label, icon] = describe(weather.code, weather.day);
-        out.push(`<div class="iw-line">${svg(icon, "iw-wx")}<span class="iw-temp">${deg(weather.temp)}</span><span class="iw-desc">${esc(label)}</span></div>`);
-        out.push(`<div class="iw-sub">${svg(path("pin"))}<span>${esc(r.name)}</span><span>最高 ${deg(weather.max)} / 最低 ${deg(weather.min)}</span></div>`);
+      if (ready(r)) {
+        const w = weather, today = w.days[0] || {};
+        const [label, icon] = describe(w.cur.code, w.cur.day);
+        out.push(`<div class="iw-line">${svg(icon, "iw-wx")}<span class="iw-temp">${deg(w.cur.temp)}</span><span class="iw-desc">${esc(label)}</span></div>`);
+        out.push(`<div class="iw-sub">${svg(path("pin"))}<span>${esc(r.name)}</span><span>最高 ${deg(today.max)} / 最低 ${deg(today.min)}</span></div>`);
+        if (kind === "ntp") {
+          out.push(`<div class="iw-meta"><span>湿度 ${pct(w.cur.hum)}</span><span>風 ${esc(windDir(w.cur.windDir))} ${ms(w.cur.wind)}</span><span>降水確率 ${pct(w.pop)}</span><span>紫外線 ${none(w.uv) ? "--" : Math.round(w.uv * 10) / 10}</span><span>日の出 ${hm(today.sunrise)}</span><span>日の入り ${hm(today.sunset)}</span></div>`);
+        }
+        out.push(`<button class="iw-more" type="button" data-iw-act="${kind === "ntp" ? "more-ntp" : "more-sb"}">詳しく見る</button>`);
       } else if (weather && weather.regionId === r.id && weather.error) {
         out.push(`<div class="iw-sub">${svg(path("cloud"))}<span>天気を取得できません(${esc(r.name)})</span></div>`);
       } else {
@@ -209,12 +269,58 @@ const MirageWidgets = (() => {
     return out.join("");
   }
 
+  // ---------- rendering: details (current / hourly / 7 days) ----------
+  const stat = (label, value, icon) => `<div class="iw-stat"><span class="iw-stat-l">${icon || ""}${esc(label)}</span><b>${value}</b></div>`;
+
+  function detailsHtml() {
+    const c = cfg(), r = regionById(c.region);
+    if (!c.weather) return `<p class="note">天気の表示がオフです。設定の「時刻と天気」でオンにできます。</p>`;
+    if (weather && weather.regionId === r.id && weather.error) return `<p class="note">天気を取得できませんでした(${esc(r.name)})。しばらくしてからもう一度お試しください。</p>`;
+    if (!ready(r)) return `<p class="note">天気を読み込み中です…(${esc(r.name)})</p>`;
+    const w = weather, today = w.days[0] || {}, cur = w.cur;
+    const [label, icon] = describe(cur.code, cur.day);
+    const hours = w.hours.map((h) => {
+      const [, hi] = describe(h.code, h.day);
+      return `<div class="iw-hour"><span class="iw-hour-t">${hourLabel(h.time)}</span>${svg(hi, "iw-wx")}<b>${deg(h.temp)}</b><span class="iw-hour-p">${pct(h.pop)}</span><span class="iw-hour-r">${mm(h.rain)}</span></div>`;
+    }).join("");
+    const days = w.days.map((d, i) => {
+      const [dl, di] = describe(d.code, true);
+      return `<div class="iw-day">
+        <div class="iw-day-top"><span class="iw-day-name">${esc(dayLabel(d.date, i))}</span>${svg(di, "iw-wx")}<span class="iw-day-desc">${esc(dl)}</span><span class="iw-day-t"><b>${deg(d.max)}</b> / ${deg(d.min)}</span></div>
+        <div class="iw-chips">
+          <span>降水確率 ${pct(d.pop)}</span><span>降水量 ${mm(d.rain)}</span>
+          <span>風 ${esc(windDir(d.windDir))} ${ms(d.wind)}</span><span>湿度 ${pct(d.hum)}</span>
+          <span>紫外線 ${uvText(d.uv)}</span><span>日の出 ${hm(d.sunrise)}</span><span>日の入り ${hm(d.sunset)}</span>
+        </div></div>`;
+    }).join("");
+    return `
+      <div class="iw-d-head">${svg(icon, "iw-wx iw-big")}<div><div class="iw-d-temp">${deg(cur.temp)}</div><div class="iw-d-desc">${esc(label)}・体感 ${deg(cur.feels)}</div><div class="iw-sub">${svg(path("pin"))}<span>${esc(r.name)}</span></div></div></div>
+      <div class="iw-stats">
+        ${stat("最高 / 最低", `${deg(today.max)} / ${deg(today.min)}`)}
+        ${stat("湿度", pct(cur.hum), svg(path("drop")))}
+        ${stat("風", `${esc(windDir(cur.windDir))} ${ms(cur.wind)} ${arrow(cur.windDir)}`, svg(path("air")))}
+        ${stat("降水確率", pct(w.pop))}
+        ${stat("降水量(いま)", mm(cur.rain))}
+        ${stat("紫外線指数", uvText(w.uv), svg(path("sunny")))}
+        ${stat("日の出", hm(today.sunrise), svg(path("up")))}
+        ${stat("日の入り", hm(today.sunset), svg(path("down")))}
+      </div>
+      <h4 class="iw-h">時間ごと(24時間)</h4>
+      <div class="iw-hours">${hours}</div>
+      <p class="iw-legend">上から 時刻・天気・気温・降水確率・降水量</p>
+      <h4 class="iw-h">7日間の予報</h4>
+      <div class="iw-days">${days}</div>
+      <p class="note">天気データ: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a></p>`;
+  }
+
   function render() {
-    const c = cfg(), markup = html();
-    for (const el of [document.getElementById("ntp-widget"), document.getElementById("sb-foot")]) {
-      if (!el) continue;
-      el.hidden = !c.clock && !c.weather;
-      el.innerHTML = markup;
+    const c = cfg();
+    const ntp = document.getElementById("ntp-widget"), sbf = document.getElementById("sb-foot");
+    if (ntp) { ntp.hidden = !c.clock && !c.weather; ntp.innerHTML = html("ntp"); }
+    if (sbf) { sbf.hidden = !c.clock && !c.weather; sbf.innerHTML = html("sb"); }
+    for (const id of ["ntp-details", "sb-weather"]) {
+      const el = document.getElementById(id);
+      if (el && (id === "sb-weather" || !el.hidden)) el.innerHTML = (id === "ntp-details" ? `<div class="iw-d-bar"><button type="button" class="iw-link" data-iw-act="to-sidebar">サイドバーで開く</button><button type="button" class="iw-link" data-iw-act="close-details">閉じる</button></div>` : "") + detailsHtml();
     }
     tick(true);
   }
@@ -227,15 +333,21 @@ const MirageWidgets = (() => {
     const t = hhmm(now), shown = t + "|" + r.id;
     if (!force && shown === lastShown) return;
     lastShown = shown;
+    const [hh, mi] = t.split(":");
     const remote = offsetMinutes(r.tz, now) !== -now.getTimezoneOffset();
     for (const el of document.querySelectorAll(".info-widget")) {
       const set = (k, v) => { const n = el.querySelector(`[data-iw="${k}"]`); if (n) n.textContent = v; };
-      set("time", t);
+      set("hh", hh);
+      set("mm", mi);
       set("date", dayText(now));
       const line = el.querySelector('[data-iw="localline"]');
       if (line) { line.hidden = !remote; if (remote) set("local", `${r.name}の現地時刻 ${hhmm(now, r.tz)}`); }
     }
   }
+
+  // ---------- details popover on the new tab page ----------
+  function openNtpDetails() { const el = document.getElementById("ntp-details"); if (el) { el.hidden = false; render(); } }
+  function closeNtpDetails() { const el = document.getElementById("ntp-details"); if (el) el.hidden = true; }
 
   function init() {
     const c = cfg();
@@ -244,17 +356,35 @@ const MirageWidgets = (() => {
     setInterval(() => tick(false), 1000);
     setInterval(() => loadWeather(false), 60 * 1000);   // re-checks the 15 minute cache
     loadWeather(true);
+
+    document.addEventListener("click", (e) => {
+      const act = e.target.closest && e.target.closest("[data-iw-act]");
+      if (act) {
+        const a = act.dataset.iwAct, box = document.getElementById("ntp-details");
+        if (a === "more-ntp") { if (box && !box.hidden) closeNtpDetails(); else openNtpDetails(); }
+        else if (a === "more-sb") MirageUI.openSidebar("weather");
+        else if (a === "to-sidebar") { closeNtpDetails(); MirageUI.openSidebar("weather"); }
+        else if (a === "close-details") closeNtpDetails();
+        return;
+      }
+      const box = document.getElementById("ntp-details");
+      if (box && !box.hidden && !e.target.closest("#ntp-details")) closeNtpDetails();
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeNtpDetails(); });
+
     let last = JSON.stringify(c);
     MirageData.on("settings", () => {
       const now = cfg();
       const key = JSON.stringify(now);
       if (key === last) return;
-      const regionChanged = now.region !== JSON.parse(last).region || (now.weather && !JSON.parse(last).weather);
+      const prev = JSON.parse(last);
+      const refetch = now.region !== prev.region || (now.weather && !prev.weather);
       last = key;
+      if (refetch) weather = cached(regionById(now.region).id) || null;
       render();
-      if (regionChanged) { weather = cached(regionById(now.region).id) || null; render(); loadWeather(true); }
+      if (refetch) loadWeather(true);
     });
   }
 
-  return { init, settingsHtml, syncSettings, wireSettings, describe, REGIONS, GROUPS };
+  return { init, render, settingsHtml, syncSettings, wireSettings, describe, parse, forecastUrl, detailsHtml, REGIONS, GROUPS };
 })();
