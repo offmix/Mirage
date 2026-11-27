@@ -22,28 +22,6 @@ Node 20 以上が必要です。トランスポートは libcurl over Wisp で�
 
 アカウントなしでも、ブックマークと設定はこのブラウザに保存されます。履歴はログイン中のみ保存されます。
 
-## Supabase のセットアップ
-
-1. [Supabase](https://supabase.com) でプロジェクトを作成します。
-2. SQL Editor で `supabase/schema.sql` の中身をすべて実行します。テーブル、RLS、アイコン用ストレージが作られます。
-3. 「Project Settings」→「API」から、Project URL と anon (public) キーを控えます。service_role キーは絶対に使わないでください。
-4. 起動するサーバーに環境変数を設定します(Render なら「Environment」)。
-
-        SUPABASE_URL=https://xxxxxxxx.supabase.co
-        SUPABASE_PUBLISHABLE_KEY=sb_publishable_...    # 従来の anon キーなら SUPABASE_ANON_KEY でも可
-
-   サーバー側でユーザーを検証する `@supabase/server`(`GET /api/me`)も使う場合は、次も設定します。
-
-        SUPABASE_SECRET_KEY=sb_secret_...              # 省略可。サーバー専用で、絶対にブラウザへ出さないこと
-        SUPABASE_JWKS=[...]                            # ユーザーのJWT検証に必要
-
-   `SUPABASE_JWKS` は、`https://xxxxxxxx.supabase.co/auth/v1/.well-known/jwks.json` の `keys` 配列をそのまま貼ります。
-   `@supabase/server` は `SUPABASE_PUBLISHABLE_KEYS` / `SUPABASE_SECRET_KEYS`(JSON形式)も読みます。
-
-5. メール確認が不要なら、Supabase の「Authentication」→「Providers」→「Email」で「Confirm email」をオフにします。オンのままなら、登録後に確認メールのリンクを開いてからログインしてください。
-
-`SUPABASE_URL` と公開キーが未設定の場合、アカウント機能は無効になり、ローカル保存だけで動きます。
-
 ## デプロイ
 
 Node と WebSocket のアップグレードに対応したホスティング(Render、Railway、Fly.io、VPS など)が必要です。
