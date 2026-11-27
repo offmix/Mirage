@@ -236,3 +236,26 @@ body.tab-locked #app{filter:blur(14px);pointer-events:none;user-select:none;tran
 .project-link .pl-name{font-weight:700}
 .project-link .pl-desc{color:var(--muted);font-size:12px}
 .project-link svg{width:16px;height:16px;color:var(--muted);flex:none}
+
+/* Clock and weather widgets */
+.info-widget{--iw-bg:var(--toolbar);color:var(--text);font-size:13px;line-height:1.4}
+.iw-line{display:flex;align-items:center;gap:8px}
+.iw-ico{width:20px;height:20px;flex:none;color:var(--muted)}
+.iw-ico.iw-wx{width:26px;height:26px;color:var(--text)}
+.iw-time{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.iw-temp{font-size:20px;font-weight:700}
+.iw-date,.iw-desc,.iw-local{color:var(--muted)}
+.iw-local{font-size:12px}
+.iw-sub{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.iw-sub .iw-ico{width:14px;height:14px}
+.iw-line[hidden],.info-widget[hidden]{display:none}
+#ntp-widget{position:absolute;top:16px;right:22px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:right}
+#ntp-widget .iw-line,#ntp-widget .iw-sub{justify-content:flex-end}
+#ntp-widget[hidden]{display:none}
+.sb-foot{flex:none;display:flex;flex-direction:column;gap:5px;padding:10px 14px 12px;background:var(--toolbar);border-top:1px solid color-mix(in srgb,var(--text) 22%,transparent)}
+.sb-foot[hidden]{display:none}
+.sb-foot .iw-time{font-size:18px}
+.sb-foot .iw-temp{font-size:17px}
+.sb-foot .iw-ico.iw-wx{width:22px;height:22px}
+.field select{height:36px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--omni);color:inherit;font:inherit;width:100%}
+.field select:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
