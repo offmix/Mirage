@@ -19,6 +19,10 @@ if (typeof MirageAdblock === "undefined") {
   missingModules.push("adblock.js");
   globalThis.MirageAdblock = { init() {}, attach() {}, settingsHtml: () => "", syncSettings() {}, wireSettings() {}, isEnabled: () => false };
 }
+if (typeof MirageWidgets === "undefined") {
+  missingModules.push("widgets.js");
+  globalThis.MirageWidgets = { init() {}, settingsHtml: () => "", syncSettings() {}, wireSettings() {} };
+}
 if (typeof MirageUI === "undefined") {
   missingModules.push("ui.js");
   globalThis.MirageUI = { init() {}, toggleFilter() {} };
