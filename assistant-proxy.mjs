@@ -71,20 +71,22 @@ export class ThinkFilter {
   end() { const rest = this.inThink ? "" : this.pending; this.pending = ""; return rest; }
 }
 
-function textOf(j) {
+const asText = (v) => (typeof v === "string" ? v : Array.isArray(v) ? v.map((p) => (typeof p === "string" ? p : p && typeof p.text === "string" ? p.text : "")).join("") : "");
+
+// One streamed event or one full answer -> { content, reasoning, finish }
+function partsOf(j) {
+  const out = { content: "", reasoning: "", finish: null };
   const c = j && j.choices && j.choices[0];
   if (c) {
-    if (c.delta && typeof c.delta.content === "string") return c.delta.content;
-    if (c.message && typeof c.message.content === "string") return c.message.content;
-    if (typeof c.text === "string") return c.text;
+    const m = c.delta || c.message || {};
+    out.content = asText(m.content) || asText(c.text);
+    out.reasoning = asText(m.reasoning_content) || asText(m.reasoning);
+    out.finish = c.finish_reason || null;
+    return out;
   }
-  if (j && j.result) {
-    if (typeof j.result.response === "string") return j.result.response;
-    const r = j.result.choices && j.result.choices[0];
-    if (r && r.message && typeof r.message.content === "string") return r.message.content;
-  }
-  if (j && typeof j.response === "string") return j.response;
-  return "";
+  const r = j && j.result;
+  out.content = asText(r && r.response) || asText(r && r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content) || asText(j && j.response);
+  return out;
 }
 
 // ---------- call Workers AI, calling onText(chunk) as the answer arrives ----------
@@ -95,51 +97,84 @@ export async function streamCompletion(opts, onText) {
   const call = (extra) => (opts.fetchImpl || fetch)(url, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify({ model, messages, stream: true, max_tokens: 3000, temperature: 0.6, ...extra }),
+    body: JSON.stringify({ model, messages, stream: true, max_tokens: 6000, max_completion_tokens: 6000, temperature: 0.6, ...extra }),
     signal,
   });
 
-  let res = await call({ reasoning_effort: "low" });
-  if (res.status === 400 || res.status === 422) {          // this option may not be accepted: retry without it
-    try { await res.body?.cancel(); } catch {}
-    res = await call({});
-  }
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    const err = new Error("upstream " + res.status);
-    err.status = res.status;
-    err.detail = detail.slice(0, 400);
-    throw err;
-  }
-
-  const filter = new ThinkFilter();
-  const emit = (t) => { const o = filter.push(t); if (o) onText(o); };
-  const type = res.headers.get("content-type") || "";
-  if (!type.includes("event-stream")) {                    // a plain JSON answer
-    emit(textOf(await res.json()));
-  } else {
-    const dec = new TextDecoder();
-    let buf = "";
-    for await (const chunk of res.body) {
-      buf += dec.decode(chunk, { stream: true });
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (data === "[DONE]") continue;
-        try { emit(textOf(JSON.parse(data))); } catch {}
+  // Reads one response. Returns what was seen, so an empty answer can be explained and retried.
+  async function consume(res) {
+    const stats = { emitted: 0, reasoning: 0, finish: null, events: 0, type: res.headers.get("content-type") || "", sample: "" };
+    const filter = new ThinkFilter();
+    const take = (j) => {
+      stats.events++;
+      const p = partsOf(j);
+      stats.reasoning += p.reasoning.length;
+      if (p.finish) stats.finish = p.finish;
+      if (!stats.sample) stats.sample = JSON.stringify(j).slice(0, 300);
+      const o = p.content ? filter.push(p.content) : "";
+      if (o) { stats.emitted += o.length; onText(o); }
+    };
+    if (!stats.type.includes("event-stream")) {                      // a plain JSON answer
+      take(await res.json());
+    } else {
+      const dec = new TextDecoder();
+      let buf = "";
+      for await (const chunk of res.body) {
+        buf += dec.decode(chunk, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try { take(JSON.parse(data)); } catch {}
+        }
       }
     }
+    const rest = filter.end();
+    if (rest) { stats.emitted += rest.length; onText(rest); }
+    return stats;
   }
-  const rest = filter.end();
-  if (rest) onText(rest);
+
+  async function go(extra) {
+    const res = await call(extra);
+    if (res.status === 400 || res.status === 422) {                 // an option may not be accepted
+      try { await res.body?.cancel(); } catch {}
+      return { rejected: true };
+    }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      const err = new Error("upstream " + res.status);
+      err.status = res.status;
+      err.detail = detail.slice(0, 400);
+      throw err;
+    }
+    return { stats: await consume(res) };
+  }
+
+  let r = await go({ reasoning_effort: "low" });
+  if (r.rejected) r = await go({});
+  if (!r.rejected && r.stats.emitted === 0) {                       // only reasoning came back: ask again without thinking
+    const r2 = await go({ chat_template_kwargs: { enable_thinking: false } });
+    if (!r2.rejected) r = r2;
+  }
+  if (r.rejected || r.stats.emitted === 0) {
+    const err = new Error("empty answer");
+    err.empty = true;
+    err.stats = r.stats || null;
+    throw err;
+  }
 }
 
 export function friendlyError(err) {
   const s = err && err.status;
   if (err && err.name === "AbortError") return "";
+  if (err && err.empty) {
+    return err.stats && err.stats.finish === "length"
+      ? "回答の生成が長くなりすぎて、途中で終わりました。質問を短くして、もう一度お試しください。"
+      : "アシスタントから回答が返りませんでした。もう一度お試しください。";
+  }
   if (s === 429) return "アシスタントが混み合っています。しばらくしてから、もう一度お試しください。";
   if (s === 401 || s === 403) return "アシスタントを利用できません。サーバーの設定(認証情報)を確認してください。";
   return "アシスタントからの応答を取得できませんでした。しばらくしてから、もう一度お試しください。";
