@@ -23,6 +23,10 @@ if (typeof MirageWidgets === "undefined") {
   missingModules.push("widgets.js");
   globalThis.MirageWidgets = { init() {}, settingsHtml: () => "", syncSettings() {}, wireSettings() {} };
 }
+if (typeof MirageAssistant === "undefined") {
+  missingModules.push("assistant.js");
+  globalThis.MirageAssistant = { init() {}, onShow() {} };
+}
 if (typeof MirageUI === "undefined") {
   missingModules.push("ui.js");
   globalThis.MirageUI = { init() {}, toggleFilter() {} };
@@ -538,7 +542,27 @@ async function diagnose() {
 }
 
 // Public hooks for ui.js (sidebar opens links in the current or a new tab).
-window.MirageApp = { navigate: (u) => navigate(u), newTab: (u) => newTab(u), current };
+// The text of the page open in the current tab, for the assistant ("read the open site").
+function readPage() {
+  const t = current();
+  if (!t || !t.url) return { error: "いまサイトが開かれていません。" };
+  try {
+    const doc = t.iframe.contentDocument;
+    if (!doc || !doc.body) return { error: "ページがまだ読み込まれていません。" };
+    const main = doc.querySelector("main, article, [role=main]");
+    let text = ((main && main.innerText) || "").trim();
+    if (text.length < 300) text = (doc.body.innerText || text).trim();   // the main area is too small: use the whole page
+    text = text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+    if (!text) return { error: "ページに読み取れる文章がありませんでした。" };
+    const meta = doc.querySelector('meta[name="description"]');
+    return {
+      url: t.url, title: t.title || doc.title || "", description: meta ? meta.getAttribute("content") || "" : "",
+      text: text.slice(0, 12000), truncated: text.length > 12000,
+    };
+  } catch { return { error: "ページの内容を読み取れませんでした。" }; }
+}
+
+window.MirageApp = { navigate: (u) => navigate(u), newTab: (u) => newTab(u), current, readPage };
 
 MirageUI.init();
 MirageData.on("bookmarks", updateStar);
