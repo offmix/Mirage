@@ -2,7 +2,7 @@
 // The model name is configured on the server only (CF_AI_MODEL) and is never sent to the browser.
 
 export const SYSTEM_PROMPT = "あなたはWEBプロキシのアシスタントのMirageアシスタントです。";
-export const DEFAULT_MODEL = "@cf/qwen/qwen3.8-27b";
+export const DEFAULT_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 
 const LIMITS = { messages: 20, userChars: 4000, assistantChars: 8000, pageChars: 16000, totalChars: 48000 };
 
