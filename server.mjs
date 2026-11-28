@@ -128,7 +128,7 @@ fastify.post("/api/assistant", async (req, reply) => {
       await streamCompletion({ accountId: CF_ACCOUNT, token: CF_TOKEN, model: CF_MODEL, messages: buildMessages(checked.value), signal: ac.signal },
         (text) => out.write(text));
     } catch (e) {
-      if (e && e.name !== "AbortError") console.error("[assistant]", e.status || "", e.message, e.detail || "");
+      if (e && e.name !== "AbortError") console.error("[assistant]", e.status || "", e.message, e.detail || "", e.stats ? JSON.stringify(e.stats) : "");
       const msg = friendlyError(e);
       if (msg) out.write("\n\n" + msg);
     } finally { out.end(); }
