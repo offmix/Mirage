@@ -14,6 +14,24 @@ const MirageAssistant = (() => {
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(history.slice(-MAX_SAVED))); } catch {} };
   const enabled = () => !(window.MIRAGE_CONFIG && window.MIRAGE_CONFIG.assistant === false);
 
+  // ---------- streaming helpers ----------
+  // Takes the complete events out of the text received so far; the unfinished tail is returned as "rest".
+  function sseTake(buf) {
+    const chunks = [];
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const event = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      for (const line of event.split("\n")) {
+        if (!line.startsWith("data:")) continue;                // comments (": ping") and other fields are ignored
+        try { const t = JSON.parse(line.slice(5).trim()); if (typeof t === "string") chunks.push(t); } catch {}
+      }
+    }
+    return { chunks, rest: buf };
+  }
+  // How many characters are shown after the next tick: a steady trickle, catching up faster when text piles up.
+  const nextShown = (shown, total) => Math.min(total, shown + Math.max(1, Math.ceil((total - shown) / 12)));
+
   // ---------- Markdown -> safe HTML ----------
   // Everything is HTML-escaped first; only the tags generated here can appear. Links are limited to http(s).
   function inline(raw) {
@@ -186,6 +204,32 @@ const MirageAssistant = (() => {
 
     abort = new AbortController();
     setBusy(true);
+
+    // The answer arrives as Server-Sent Events. Text is revealed a little at a time, so it flows
+    // smoothly even when the network delivers it in bursts, and it follows the end only if you are at the bottom.
+    let target = "", shown = 0, finished = false, timer = 0, drainedResolve;
+    const drained = new Promise((r) => { drainedResolve = r; });
+    const started = Date.now();
+    const waitTick = setInterval(() => { if (!target) answer.textContent = `考え中… ${Math.floor((Date.now() - started) / 1000)}秒`; }, 500);
+    answer.textContent = "考え中… 0秒";
+
+    function paint() {
+      const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+      answer.classList.remove("ai-pending");
+      answer.classList.toggle("ai-streaming", !finished || shown < target.length);
+      answer.innerHTML = markdown(target.slice(0, shown));
+      if (nearBottom) box.scrollTop = box.scrollHeight;
+    }
+    function step() {
+      timer = 0;
+      if (document.hidden) shown = target.length;                 // a hidden tab: no need to animate
+      else shown = nextShown(shown, target.length);
+      if (target) paint();
+      if (shown < target.length || !finished) timer = setTimeout(step, 16);
+      else drainedResolve();
+    }
+    const kick = () => { if (!timer) timer = setTimeout(step, 0); };
+
     let got = "";
     try {
       const res = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: abort.signal });
@@ -195,22 +239,31 @@ const MirageAssistant = (() => {
         throw new Error(msg);
       }
       const reader = res.body.getReader(), dec = new TextDecoder();
+      let buf = "";
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
-        got += dec.decode(value, { stream: true });
-        answer.classList.remove("ai-pending");
-        answer.innerHTML = markdown(got) || "…";
-        scrollDown();
+        buf += dec.decode(value, { stream: true });
+        const taken = sseTake(buf);
+        buf = taken.rest;
+        if (taken.chunks.length) { target += taken.chunks.join(""); clearInterval(waitTick); kick(); }
       }
-      got += dec.decode();
+      finished = true;
+      kick();
+      await drained;
     } catch (e) {
-      if (e && e.name === "AbortError") got = got ? got + "\n\n(停止しました)" : "(停止しました)";
-      else got = got ? got + "\n\n" + e.message : e.message;
+      finished = true;
+      shown = target.length;                                      // show everything that arrived before the stop or the error
+      if (e && e.name === "AbortError") target += target ? "\n\n(停止しました)" : "(停止しました)";
+      else target += target ? "\n\n" + e.message : e.message;
+      shown = target.length;
     } finally {
+      clearInterval(waitTick);
+      if (timer) clearTimeout(timer);
       abort = null;
       setBusy(false);
-      answer.classList.remove("ai-pending");
+      got = target;
+      answer.classList.remove("ai-pending", "ai-streaming");
       if (got.trim()) history.push({ role: "assistant", content: got.trim() });
       save(); renderAll();
       if (!got.trim()) $("#ai-msgs").appendChild(bubble("assistant", "応答が返りませんでした。もう一度お試しください。", "ai-hint"));
@@ -279,5 +332,5 @@ const MirageAssistant = (() => {
   function init() { build(); }
   function onShow() { build(); renderAll(); setTimeout(() => { const i = $("#ai-input"); if (i && !i.disabled) i.focus(); }, 0); }
 
-  return { init, onShow, format, markdown };
+  return { init, onShow, format, markdown, sseTake, nextShown };
 })();
