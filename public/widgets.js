@@ -257,7 +257,7 @@ const MirageWidgets = (() => {
         out.push(`<div class="iw-line">${svg(icon, "iw-wx")}<span class="iw-temp">${deg(w.cur.temp)}</span><span class="iw-desc">${esc(label)}</span></div>`);
         out.push(`<div class="iw-sub">${svg(path("pin"))}<span>${esc(r.name)}</span><span>最高 ${deg(today.max)} / 最低 ${deg(today.min)}</span></div>`);
         if (kind === "ntp") {
-          out.push(`<div class="iw-meta"><span>湿度 ${pct(w.cur.hum)}</span><span>風 ${esc(windDir(w.cur.windDir))} ${ms(w.cur.wind)}</span><span>降水確率 ${pct(w.pop)}</span><span>紫外線 ${none(w.uv) ? "--" : Math.round(w.uv * 10) / 10}</span><span>日の出 ${hm(today.sunrise)}</span><span>日の入り ${hm(today.sunset)}</span></div>`);
+          out.push(`<div class="iw-meta"><span>風 ${esc(windDir(w.cur.windDir))} ${ms(w.cur.wind)}</span><span>降水確率 ${pct(w.pop)}</span><span>紫外線 ${none(w.uv) ? "--" : Math.round(w.uv * 10) / 10}</span><span>湿度 ${pct(w.cur.hum)}</span><span>日の出 ${hm(today.sunrise)}</span><span>日の入り ${hm(today.sunset)}</span></div>`);
         }
         out.push(`<button class="iw-more" type="button" data-iw-act="${kind === "ntp" ? "more-ntp" : "more-sb"}">詳しく見る</button>`);
       } else if (weather && weather.regionId === r.id && weather.error) {
