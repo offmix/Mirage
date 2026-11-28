@@ -105,8 +105,9 @@ const MirageAssistant = (() => {
       abort = null;
       setBusy(false);
       answer.classList.remove("ai-pending");
-      history.push({ role: "assistant", content: got.trim() || "(応答がありませんでした)" });
+      if (got.trim()) history.push({ role: "assistant", content: got.trim() });
       save(); renderAll();
+      if (!got.trim()) $("#ai-msgs").appendChild(bubble("assistant", "応答が返りませんでした。もう一度お試しください。", "ai-hint"));
     }
   }
 
@@ -163,4 +164,4 @@ const MirageAssistant = (() => {
   function onShow() { build(); renderAll(); setTimeout(() => { const i = $("#ai-input"); if (i && !i.disabled) i.focus(); }, 0); }
 
   return { init, onShow, format };
-})();assistant.js
+})();
