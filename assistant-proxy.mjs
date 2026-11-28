@@ -179,3 +179,10 @@ export function friendlyError(err) {
   if (s === 401 || s === 403) return "アシスタントを利用できません。サーバーの設定(認証情報)を確認してください。";
   return "アシスタントからの応答を取得できませんでした。しばらくしてから、もう一度お試しください。";
 }
+
+// ---------- framing for the browser: Server-Sent Events ----------
+// Each piece of the answer is one event whose data is a JSON string. The first comment is padded so that
+// proxies start passing the stream on at once, and "ping" comments keep the connection open while the model thinks.
+export const SSE_OPEN = ": connected" + " ".repeat(2048) + "\n\n";
+export const SSE_PING = ": ping\n\n";
+export const sseData = (text) => "data: " + JSON.stringify(String(text)) + "\n\n";
