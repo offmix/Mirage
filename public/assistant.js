@@ -14,13 +14,119 @@ const MirageAssistant = (() => {
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(history.slice(-MAX_SAVED))); } catch {} };
   const enabled = () => !(window.MIRAGE_CONFIG && window.MIRAGE_CONFIG.assistant === false);
 
-  // minimal, safe formatting: escape first, then **bold**, `code` and ``` blocks
-  function format(text) {
-    let t = esc(text);
-    t = t.replace(/```(?:[\w-]*)\n?([\s\S]*?)```/g, (m, code) => `<pre>${code.replace(/\n$/, "")}</pre>`);
-    t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
-    return t;
+  // ---------- Markdown -> safe HTML ----------
+  // Everything is HTML-escaped first; only the tags generated here can appear. Links are limited to http(s).
+  function inline(raw) {
+    const codes = [];
+    let s = String(raw).replace(/(`+)([\s\S]*?[^`])\1(?!`)/g, (m, t, code) => { codes.push(code.replace(/^ (.+) $/, "$1")); return "\u0000" + (codes.length - 1) + "\u0000"; });
+    s = esc(s);
+    s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");                                           // images are not loaded; keep the alt text
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (m, t, url) => `<a href="${url}" data-ai-link>${t}</a>`);
+    // bare URLs become links too, but never inside the links made above
+    s = s.split(/(<a\b[^>]*>[\s\S]*?<\/a>)/).map((part, k) => (k % 2 ? part
+      : part.replace(/(^|[\s(（])(https?:\/\/[^\s<)）]+[^\s<).,;:!?）])/g, (m, pre, url) => `${pre}<a href="${url}" data-ai-link>${url}</a>`))).join("");
+    s = s.replace(/\*\*(?=\S)([\s\S]+?)(?<=\S)\*\*/g, "<strong>$1</strong>").replace(/__(?=\S)([\s\S]+?)(?<=\S)__/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[\s(>])\*(?=[^\s*])([^*\n]+?)(?<=[^\s*])\*(?=[\s.,;:!?)<]|$)/g, "$1<em>$2</em>");
+    s = s.replace(/(^|[\s(>])_(?=[^\s_])([^_\n]+?)(?<=[^\s_])_(?=[\s.,;:!?)<]|$)/g, "$1<em>$2</em>");
+    s = s.replace(/~~(?=\S)([\s\S]+?)(?<=\S)~~/g, "<del>$1</del>");
+    return s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${esc(codes[Number(i)])}</code>`);
   }
+
+  const LIST_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+  const FENCE_RE = /^\s*(`{3,}|~{3,})\s*([\w+#.-]*)\s*$/;
+  const HR_RE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+  const HEAD_RE = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+  const SEP_RE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+  const indentOf = (l) => l.match(/^\s*/)[0].replace(/\t/g, "    ").length;
+  const splitRow = (l) => {
+    let t = l.trim();
+    if (t.startsWith("|")) t = t.slice(1);
+    if (t.endsWith("|") && !t.endsWith("\\|")) t = t.slice(0, -1);
+    return t.split(/(?<!\\)\|/).map((x) => x.trim().replace(/\\\|/g, "|"));
+  };
+  const startsBlock = (lines, i) => {
+    const l = lines[i];
+    return FENCE_RE.test(l) || HR_RE.test(l) || HEAD_RE.test(l) || LIST_RE.test(l) || /^\s{0,3}>/.test(l) ||
+      (l.includes("|") && i + 1 < lines.length && SEP_RE.test(lines[i + 1]) && lines[i + 1].includes("-"));
+  };
+
+  function parseList(lines, start) {
+    const first = lines[start].match(LIST_RE), base = first[1].replace(/\t/g, "    ").length;
+    const ordered = /\d/.test(first[2]);
+    const items = [];
+    let i = start;
+    while (i < lines.length) {
+      const m = lines[i].match(LIST_RE);
+      if (!m) {
+        if (!lines[i].trim()) {                                   // a blank line: the list goes on only if another item follows
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim()) j++;
+          const n = j < lines.length && lines[j].match(LIST_RE);
+          if (n && n[1].replace(/\t/g, "    ").length >= base) { i = j; continue; }
+          break;
+        }
+        if (indentOf(lines[i]) > base && items.length && !startsBlock(lines, i)) { items[items.length - 1].text += "\n" + lines[i].trim(); i++; continue; }
+        break;
+      }
+      const ind = m[1].replace(/\t/g, "    ").length;
+      if (ind < base) break;
+      if (ind > base && items.length) { const sub = parseList(lines, i); items[items.length - 1].kids.push(sub.html); i = sub.next; continue; }
+      items.push({ text: m[3], kids: [] });
+      i++;
+    }
+    const tag = ordered ? "ol" : "ul";
+    const html = `<${tag}>` + items.map((it) => {
+      let t = it.text, box = "";
+      const task = t.match(/^\[([ xX])\]\s+/);
+      if (task) { box = `<input type="checkbox" disabled${task[1] === " " ? "" : " checked"}> `; t = t.slice(task[0].length); }
+      return `<li>${box}${inline(t).replace(/\n/g, "<br>")}${it.kids.join("")}</li>`;
+    }).join("") + `</${tag}>`;
+    return { html, next: i };
+  }
+
+  function markdown(text) {
+    const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      let m = line.match(FENCE_RE);
+      if (m) {                                                    // fenced code (an unfinished one, while streaming, is shown as it is)
+        const fence = m[1], body = [];
+        i++;
+        while (i < lines.length && !(lines[i].trim().startsWith(fence[0].repeat(fence.length)) && /^[`~]+\s*$/.test(lines[i].trim()))) { body.push(lines[i]); i++; }
+        i++;
+        out.push(`<div class="ai-code"><div class="ai-code-bar"><span>${esc(m[2] || "code")}</span><button type="button" data-ai-copy>コピー</button></div><pre><code>${esc(body.join("\n"))}</code></pre></div>`);
+        continue;
+      }
+      if (!line.trim()) { i++; continue; }
+      if (HR_RE.test(line)) { out.push("<hr>"); i++; continue; }
+      m = line.match(HEAD_RE);
+      if (m) { out.push(`<div class="ai-h ai-h${m[1].length}">${inline(m[2])}</div>`); i++; continue; }
+      if (line.includes("|") && i + 1 < lines.length && SEP_RE.test(lines[i + 1]) && lines[i + 1].includes("-")) {
+        const head = splitRow(line), align = splitRow(lines[i + 1]).map((a) => (/^:-+:$/.test(a) ? "center" : /-:$/.test(a) ? "right" : ""));
+        const rows = [];
+        i += 2;
+        while (i < lines.length && lines[i].trim() && lines[i].includes("|")) { rows.push(splitRow(lines[i])); i++; }
+        const cell = (tag, t, k) => `<${tag}${align[k] ? ` style="text-align:${align[k]}"` : ""}>${inline(t || "")}</${tag}>`;
+        out.push(`<div class="ai-table"><table><thead><tr>${head.map((h, k) => cell("th", h, k)).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${head.map((_, k) => cell("td", r[k], k)).join("")}</tr>`).join("")}</tbody></table></div>`);
+        continue;
+      }
+      if (/^\s{0,3}>/.test(line)) {
+        const q = [];
+        while (i < lines.length && /^\s{0,3}>/.test(lines[i])) { q.push(lines[i].replace(/^\s{0,3}>\s?/, "")); i++; }
+        out.push(`<blockquote>${markdown(q.join("\n"))}</blockquote>`);
+        continue;
+      }
+      if (LIST_RE.test(line)) { const r = parseList(lines, i); out.push(r.html); i = r.next; continue; }
+      const para = [line];                                        // a paragraph: lines are kept as written (chat style)
+      i++;
+      while (i < lines.length && lines[i].trim() && !startsBlock(lines, i)) { para.push(lines[i]); i++; }
+      out.push(`<p>${para.map((l) => inline(l.trim())).join("<br>")}</p>`);
+    }
+    return out.join("");
+  }
+  const format = markdown;
 
   function bubble(role, html, cls) {
     const d = document.createElement("div");
@@ -40,7 +146,7 @@ const MirageAssistant = (() => {
         : "アシスタントは、このサーバーではまだ設定されていません。", "ai-hint"));
     }
     for (const m of history) {
-      const el = bubble(m.role, format(m.content));
+      const el = bubble(m.role, m.role === "assistant" ? markdown(m.content) : esc(m.content));
       if (m.page) { const cap = document.createElement("div"); cap.className = "ai-cap"; cap.textContent = "参照したページ: " + m.page; el.appendChild(cap); }
       box.appendChild(el);
     }
@@ -94,7 +200,7 @@ const MirageAssistant = (() => {
         if (done) break;
         got += dec.decode(value, { stream: true });
         answer.classList.remove("ai-pending");
-        answer.innerHTML = format(got) || "…";
+        answer.innerHTML = markdown(got) || "…";
         scrollDown();
       }
       got += dec.decode();
@@ -137,7 +243,17 @@ const MirageAssistant = (() => {
       points: "いま開いているページの要点を、箇条書きで教えてください。",
       about: "いま開いているサイトは、どんなサイトですか? 何ができるか教えてください。",
     };
-    root.addEventListener("click", (e) => {
+    root.addEventListener("click", async (e) => {
+      const link = e.target.closest("a[data-ai-link]");
+      if (link) { e.preventDefault(); if (window.MirageApp) window.MirageApp.newTab(link.href); return; }   // opened inside Mirage (proxied)
+      const copy = e.target.closest("[data-ai-copy]");
+      if (copy) {
+        const code = copy.closest(".ai-code").querySelector("code").textContent;
+        try { await navigator.clipboard.writeText(code); copy.textContent = "コピーしました"; }
+        catch { copy.textContent = "コピーできません"; }
+        setTimeout(() => { copy.textContent = "コピー"; }, 1500);
+        return;
+      }
       const q = e.target.closest("[data-ai-q]");
       if (q) { const box = $("#ai-page"); if (box) box.checked = true; send(QUICK[q.dataset.aiQ], true); return; }
       if (e.target.closest('[data-ai="new"]')) {
@@ -163,5 +279,5 @@ const MirageAssistant = (() => {
   function init() { build(); }
   function onShow() { build(); renderAll(); setTimeout(() => { const i = $("#ai-input"); if (i && !i.disabled) i.focus(); }, 0); }
 
-  return { init, onShow, format };
+  return { init, onShow, format, markdown };
 })();
