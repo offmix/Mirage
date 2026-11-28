@@ -122,7 +122,9 @@ fastify.post("/api/assistant", async (req, reply) => {
 
   const out = new PassThrough();
   const ac = new AbortController();
-  req.raw.on("close", () => ac.abort());
+  // Abort the AI call only if the browser goes away before the answer is finished.
+  // (req 'close' fires as soon as the request body has been read, so it must not be used for this.)
+  reply.raw.on("close", () => { if (!reply.raw.writableFinished) ac.abort(); });
   (async () => {
     try {
       await streamCompletion({ accountId: CF_ACCOUNT, token: CF_TOKEN, model: CF_MODEL, messages: buildMessages(checked.value), signal: ac.signal },
