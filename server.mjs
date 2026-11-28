@@ -7,7 +7,7 @@ import fastifyStatic from "@fastify/static";
 import { server as wisp } from "@mercuryworkshop/wisp-js/server";
 import { PassThrough } from "node:stream";
 import { fetchIcon } from "./icon-proxy.mjs";
-import { validateRequest, buildMessages, streamCompletion, friendlyError, DEFAULT_MODEL } from "./assistant-proxy.mjs";
+import { validateRequest, buildMessages, streamCompletion, friendlyError, DEFAULT_MODEL, SSE_OPEN, SSE_PING, sseData } from "./assistant-proxy.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 // Locate package files directly in node_modules (avoids "exports" restrictions on package.json).
@@ -125,17 +125,20 @@ fastify.post("/api/assistant", async (req, reply) => {
   // Abort the AI call only if the browser goes away before the answer is finished.
   // (req 'close' fires as soon as the request body has been read, so it must not be used for this.)
   reply.raw.on("close", () => { if (!reply.raw.writableFinished) ac.abort(); });
+  out.write(SSE_OPEN);                                          // flushes the headers right away
+  const beat = setInterval(() => out.write(SSE_PING), 10_000);  // keeps proxies from closing an idle connection while the model thinks
   (async () => {
     try {
       await streamCompletion({ accountId: CF_ACCOUNT, token: CF_TOKEN, model: CF_MODEL, messages: buildMessages(checked.value), signal: ac.signal },
-        (text) => out.write(text));
+        (text) => out.write(sseData(text)));
     } catch (e) {
       if (e && e.name !== "AbortError") console.error("[assistant]", e.status || "", e.message, e.detail || "", e.stats ? JSON.stringify(e.stats) : "");
       const msg = friendlyError(e);
-      if (msg) out.write("\n\n" + msg);
-    } finally { out.end(); }
+      if (msg) out.write(sseData("\n\n" + msg));
+    } finally { clearInterval(beat); out.end(); }
   })();
-  return reply.header("content-type", "text/plain; charset=utf-8").header("cache-control", "no-store").header("x-accel-buffering", "no").send(out);
+  return reply.header("content-type", "text/event-stream; charset=utf-8").header("cache-control", "no-cache, no-transform")
+    .header("x-accel-buffering", "no").send(out);
 });
 
 // Same-origin copy of a remote image, used for the tab icon and the icon picker.
