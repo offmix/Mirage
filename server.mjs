@@ -5,7 +5,9 @@ import { createServer } from "node:http";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { server as wisp } from "@mercuryworkshop/wisp-js/server";
+import { PassThrough } from "node:stream";
 import { fetchIcon } from "./icon-proxy.mjs";
+import { validateRequest, buildMessages, streamCompletion, friendlyError, DEFAULT_MODEL } from "./assistant-proxy.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 // Locate package files directly in node_modules (avoids "exports" restrictions on package.json).
@@ -30,6 +32,7 @@ if (!existsSync(join(publicDir, "index.html"))) {
 }
 
 const fastify = Fastify({
+  trustProxy: true, // behind Render's proxy: use the real client IP (rate limits)
   serverFactory: (handler) =>
     createServer((req, res) => {
       res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
@@ -50,6 +53,15 @@ fastify.register(fastifyStatic, { root: pkgDist("@mercuryworkshop/libcurl-transp
 fastify.register(fastifyStatic, { root: join(pkgDist("@supabase/supabase-js"), "umd"), prefix: "/supabase/", decorateReply: false });
 
 // Public Supabase settings, taken from environment variables (the anon key is safe to expose; RLS protects data).
+// ---------- Mirage assistant (Cloudflare Workers AI) ----------
+// Env: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN (Workers AI permission); optional CF_AI_MODEL, ASSISTANT_RATE_PER_HOUR.
+const CF_ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID || "";
+const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN || "";
+const CF_MODEL = process.env.CF_AI_MODEL || DEFAULT_MODEL;
+const ASSISTANT_READY = !!(CF_ACCOUNT && CF_TOKEN);
+const ASSISTANT_RATE = Number(process.env.ASSISTANT_RATE_PER_HOUR) || 40;
+const assistantHits = new Map(); // ip -> { n, t }
+
 // Browser-side key: new "publishable" key, or the legacy anon key (both are safe to expose; RLS protects data).
 function publicKey() {
   if (process.env.SUPABASE_PUBLISHABLE_KEY) return process.env.SUPABASE_PUBLISHABLE_KEY;
@@ -67,6 +79,7 @@ fastify.get("/config.js", async (req, reply) => {
   return "window.MIRAGE_CONFIG=" + JSON.stringify({
     supabaseUrl: process.env.SUPABASE_URL || "",
     supabaseAnonKey: publicKey(),
+    assistant: ASSISTANT_READY,   // only whether it is configured; no model or key
   }) + ";";
 });
 
@@ -97,6 +110,32 @@ fastify.get("/api/me", async (req, reply) => {
 // Lets the client detect which Scramjet build files exist.
 const scramDir = pkgDist("@mercuryworkshop/scramjet");
 console.log(`[mirage] scramjet files: ${readdirSync(scramDir).join(", ")}`);
+fastify.post("/api/assistant", async (req, reply) => {
+  if (!ASSISTANT_READY) return reply.code(503).send({ error: "アシスタントはこのサーバーで設定されていません。" });
+  const now = Date.now();
+  const h = assistantHits.get(req.ip);
+  if (!h || now - h.t > 3_600_000) assistantHits.set(req.ip, { n: 1, t: now });
+  else if (++h.n > ASSISTANT_RATE) return reply.code(429).send({ error: "利用回数の上限に達しました。しばらくしてから、もう一度お試しください。" });
+
+  const checked = validateRequest(req.body);
+  if (checked.error) return reply.code(400).send({ error: checked.error });
+
+  const out = new PassThrough();
+  const ac = new AbortController();
+  req.raw.on("close", () => ac.abort());
+  (async () => {
+    try {
+      await streamCompletion({ accountId: CF_ACCOUNT, token: CF_TOKEN, model: CF_MODEL, messages: buildMessages(checked.value), signal: ac.signal },
+        (text) => out.write(text));
+    } catch (e) {
+      if (e && e.name !== "AbortError") console.error("[assistant]", e.status || "", e.message, e.detail || "");
+      const msg = friendlyError(e);
+      if (msg) out.write("\n\n" + msg);
+    } finally { out.end(); }
+  })();
+  return reply.header("content-type", "text/plain; charset=utf-8").header("cache-control", "no-store").header("x-accel-buffering", "no").send(out);
+});
+
 // Same-origin copy of a remote image, used for the tab icon and the icon picker.
 // Serving it from this origin avoids cross-origin / COEP / wrong-MIME problems, and the server
 // checks that the file really is a raster image (see icon-proxy.mjs for the SSRF guards).
