@@ -25,9 +25,10 @@ const MirageUI = (() => {
 
   // Other projects (opened in a new Mirage tab)
   const PROJECTS = [
-    { name: "みかんTube+", desc: "独自のYouTubeフロントエンド", url: "https://html.cafe/xa9e50f42" },
-    { name: "KAI-Chats NEXT", desc: "AIチャットアプリ", url: "https://script.google.com/macros/s/AKfycbzHD-m3N8-T6GN9Ti0LxmyIOZA6hvfNjIy5dc2erfazRVCXGZDs6348ErdvWYTtIjDj/exec" },
-    { name: "Better", desc: "「より良く」をテーマにしたプロジェクト", url: "https://html.cafe/x3d1c203e" },
+    { name: "みかんTube+", desc: "YouTubeの代替フロントエンド", url: "https://html.cafe/xa9e50f42" },
+    { name: "KAI-Chats NEXT", desc: "ChatGPTにインスパイアされたAIサービス", url: "https://script.google.com/macros/s/AKfycbzHD-m3N8-T6GN9Ti0LxmyIOZA6hvfNjIy5dc2erfazRVCXGZDs6348ErdvWYTtIjDj/exec" },
+    { name: "Better", desc: "Xを閲覧するためのプロジェクト", url: "https://html.cafe/x3d1c203e" },
+    { name: "GitHub", desc: "offmix のGitHubページ", url: "https://github.com/offmix" },
   ];
 
   // ---------- theme ----------
@@ -203,6 +204,7 @@ const MirageUI = (() => {
           <button data-panel="history">履歴</button>
           <button data-panel="settings">設定</button>
           <button data-panel="weather">天気</button>
+          <button data-panel="ai" title="Mirage アシスタント">AI</button>
         </div>
         <button class="icon-btn small" data-sb-close title="閉じる" aria-label="閉じる">${ic("i-close")}</button>
       </div>
@@ -213,6 +215,7 @@ const MirageUI = (() => {
       <div class="sb-list" id="sb-list"></div>
       <div class="sb-settings dlg-body" id="sb-settings" hidden></div>
       <div class="sb-weather" id="sb-weather" hidden></div>
+      <div class="sb-ai" id="sb-ai" hidden></div>
       <div class="sb-foot info-widget" id="sb-foot" hidden></div>`;
 
     sb().addEventListener("click", async (e) => {
@@ -292,14 +295,16 @@ const MirageUI = (() => {
   function renderSidebar() {
     if (sb().hidden) return;
     for (const b of sb().querySelectorAll("[data-panel]")) b.classList.toggle("active", b.dataset.panel === panel);
-    const isSettings = panel === "settings", isWeather = panel === "weather";
-    $("#sb-tools").hidden = isSettings || isWeather;
-    $("#sb-list").hidden = isSettings || isWeather;
+    const isSettings = panel === "settings", isWeather = panel === "weather", isAI = panel === "ai";
+    $("#sb-tools").hidden = isSettings || isWeather || isAI;
+    $("#sb-list").hidden = isSettings || isWeather || isAI;
     $("#sb-settings").hidden = !isSettings;
     $("#sb-weather").hidden = !isWeather;
-    $("#sb-foot").style.display = isWeather ? "none" : ""; // the weather panel already shows everything
+    $("#sb-ai").hidden = !isAI;
+    $("#sb-foot").style.display = isWeather || isAI ? "none" : ""; // those panels need the room (the weather panel shows it all)
     $("#btn-settings").classList.toggle("on", isSettings);
     if (isWeather) { MirageWidgets.render(); return; }
+    if (isAI) { MirageAssistant.onShow(); return; }
     if (isSettings) {
       if ($("#sb-settings").dataset.ready) syncSettingsDialog(); else renderSettings();
       return;
@@ -605,6 +610,7 @@ const MirageUI = (() => {
     MirageAdblock.init();
     MirageWidgets.wireSettings(dlgSet());
     MirageWidgets.init();
+    MirageAssistant.init();
     wireTab();
 
     MirageData.on("settings", () => { applyTheme(); applyFilter(); applyTab(); syncSettingsDialog(); });
